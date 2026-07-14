@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { validate } from '../middlewares/validate';
 import { authRequired } from '../middlewares/auth';
-import { updateProfileSchema, wechatLoginSchema } from '../validators/user.schema';
+import { updateProfileSchema } from '../validators/user.schema';
 import * as userController from '../controllers/user.controller';
 
 export const userRouter = Router();
@@ -24,8 +24,6 @@ export const userRouter = Router();
  *     responses:
  *       200: { description: OK }
  */
-userRouter.post('/wechat-login', validate(wechatLoginSchema), userController.wechatLogin);
-
 /**
  * @openapi
  * /users/me:
@@ -50,3 +48,4 @@ userRouter.get('/me', authRequired, userController.getProfile);
  *       200: { description: OK }
  */
 userRouter.patch('/me', authRequired, validate(updateProfileSchema), userController.updateProfile);
+userRouter.delete('/me', authRequired, userController.deleteProfile);

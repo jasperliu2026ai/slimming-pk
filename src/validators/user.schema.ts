@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 export const wechatLoginSchema = z.object({
   code: z.string().min(1, 'code is required'),
+  privacyAgreed: z.literal(true, {
+    errorMap: () => ({ message: 'privacy agreement is required' }),
+  }),
 });
 export type WechatLoginDto = z.infer<typeof wechatLoginSchema>;
 

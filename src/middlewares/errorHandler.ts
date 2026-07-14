@@ -15,6 +15,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
     return res.status(err.status).json({
       code: err.code,
       message: err.message,
+      data: null,
       details: err.details,
       traceId,
     });
@@ -22,8 +23,9 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
 
   logger.error({ traceId, err }, 'Unhandled error');
   return res.status(500).json({
-    code: 'INTERNAL_ERROR',
+    code: 5000,
     message: 'Internal server error',
+    data: null,
     traceId,
   });
 }
@@ -31,8 +33,9 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
 /** 404 兜底 */
 export function notFoundHandler(req: Request, res: Response) {
   res.status(404).json({
-    code: 'NOT_FOUND',
+    code: 2001,
     message: `Route not found: ${req.method} ${req.originalUrl}`,
+    data: null,
     traceId: req.traceId,
   });
 }
