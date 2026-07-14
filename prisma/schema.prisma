@@ -1,0 +1,70 @@
+// 初版 schema，后续按需求继续拆表
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  openid         String    @unique
+  unionid        String?   @unique
+  nickname       String    @default("")
+  avatarUrl      String    @default("")
+  gender         Gender    @default(unknown)
+  heightCm       Int?
+  targetWeightKg Decimal?  @db.Decimal(5, 2)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  checkins       Checkin[]
+
+  @@map("users")
+}
+
+enum Gender {
+  male
+  female
+  unknown
+}
+
+model Checkin {
+  id         String   @id @default(cuid())
+  userId     String
+  weightKg   Decimal  @db.Decimal(5, 2)
+  imageUrl   String?
+  note       String?  @db.VarChar(280)
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("checkins")
+}
+
+// 资金流水表：只增不改，作为对账依据
+model FundLedger {
+  id         String     @id @default(cuid())
+  userId     String
+  bizType    BizType
+  bizId      String     // 关联 PK 房间 id / 订单 id 等
+  amountCent Int        // 单位：分；正数入账，负数出账
+  balanceCent Int       // 变动后余额（分）
+  remark     String?    @db.VarChar(255)
+  createdAt  DateTime   @default(now())
+
+  @@index([userId, createdAt])
+  @@index([bizType, bizId])
+  @@map("fund_ledger")
+}
+
+enum BizType {
+  deposit    // 押金
+  refund     // 退款
+  reward     // 奖金
+  penalty    // 惩罚扣款
+  adjust     // 人工调账（需审批）
+}
