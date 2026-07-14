@@ -1,44 +1,44 @@
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { NotFoundError } from '../utils/AppError';
+import { users } from '../store/memoryStore';
 import { UpdateProfileDto } from '../validators/user.schema';
 
-/**
- * TODO(斯斯): 接入真实的 Prisma Client + 微信登录接口。
- * 这里先给出接口形状，让前端/QA 可以先联调 mock。
- */
-
-interface UserProfile {
-  userId: string;
-  nickname: string;
-  gender: 'male' | 'female' | 'unknown';
-  heightCm?: number;
-  targetWeightKg?: number;
-}
-
-export async function loginByWechatCode(code: string, traceId: string) {
+export async function loginByWechatCode(code: string, privacyAgreed: true, traceId: string) {
   logger.info({ traceId, codeLen: code.length }, 'wechat login called');
-  // TODO: 调 https://api.weixin.qq.com/sns/jscode2session 拿 openid / session_key
-  // TODO: upsert 用户表并生成 JWT
-  const userId = 'demo-user-id';
-  const token = jwt.sign({ userId }, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN });
-  return { userId, token };
-}
-
-export async function getProfile(userId: string): Promise<UserProfile> {
-  // TODO: prisma.user.findUnique
-  if (!userId) throw new NotFoundError('User not found');
-  return { userId, nickname: 'demo', gender: 'unknown' };
-}
-
-export async function updateProfile(userId: string, dto: UpdateProfileDto): Promise<UserProfile> {
-  // TODO: prisma.user.update
-  return {
-    userId,
-    nickname: dto.nickname ?? 'demo',
-    gender: dto.gender ?? 'unknown',
-    heightCm: dto.heightCm,
-    targetWeightKg: dto.targetWeightKg,
+  const user = users.get('demo-user-id');
+  if (!user) throw new NotFoundError('User not found');
+  if (privacyAgreed && !user.privacyAgreedAt) user.privacyAgreedAt = new Date().toISOString();
+  const options: SignOptions = {
+    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
   };
+  const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, options);
+  return { token, user };
+}
+
+export async function getProfile(userId: string) {
+  const user = users.get(userId);
+  if (!user) throw new NotFoundError('User not found');
+  return user;
+}
+
+export async function updateProfile(userId: string, dto: UpdateProfileDto) {
+  const user = users.get(userId);
+  if (!user) throw new NotFoundError('User not found');
+  const updated = {
+    ...user,
+    nickname: dto.nickname ?? user.nickname,
+    gender: dto.gender ?? user.gender,
+    heightCm: dto.heightCm ?? user.heightCm,
+    targetWeightKg: dto.targetWeightKg ?? user.targetWeightKg,
+  };
+  users.set(userId, updated);
+  return updated;
+}
+
+export async function deleteProfile(userId: string) {
+  if (!users.has(userId)) throw new NotFoundError('User not found');
+  users.delete(userId);
+  return { deleted: true };
 }

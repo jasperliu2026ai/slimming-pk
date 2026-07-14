@@ -13,5 +13,5 @@ export const healthRouter = Router();
  *         description: OK
  */
 healthRouter.get('/', (_req, res) => {
-  res.json({ status: 'ok', ts: Date.now() });
+  res.json({ code: 0, message: 'ok', data: { status: 'ok', ts: Date.now() } });
 });

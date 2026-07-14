@@ -3,12 +3,12 @@ import { healthRouter } from './health.route';
 import { userRouter } from './user.route';
 import { pkRouter } from './pk.route';
 import { checkinRouter } from './checkin.route';
-import { paymentRouter } from './payment.route';
+import { authRouter } from './auth.route';
 
 export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
+apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', userRouter);
-apiRouter.use('/pk', pkRouter);
-apiRouter.use('/checkins', checkinRouter);
-apiRouter.use('/payments', paymentRouter);
+apiRouter.use('/rooms', pkRouter);
+apiRouter.use('/rooms/:roomId/checkins', checkinRouter);
