@@ -115,7 +115,13 @@ export function joinRoom(roomId: string, userId: string, dto: JoinRoomDto) {
 }
 
 export function getLeaderboard(roomId: string) {
-  return { roomId, members: rankMembers(roomId), updatedAt: new Date().toISOString() };
+  const list = rankMembers(roomId);
+  return {
+    roomId,
+    list,
+    myRank: null,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 export function getSettlement(roomId: string, userId: string) {

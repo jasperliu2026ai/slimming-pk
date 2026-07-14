@@ -50,3 +50,12 @@ export function listCheckins(roomId: string, userId: string) {
     .filter((item) => item.roomId === roomId && item.userId === userId)
     .sort((a, b) => b.date.localeCompare(a.date));
 }
+
+export function getTodayCheckin(roomId: string, userId: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  return (
+    checkins.find(
+      (item) => item.roomId === roomId && item.userId === userId && item.date === date,
+    ) ?? null
+  );
+}

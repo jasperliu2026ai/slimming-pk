@@ -55,7 +55,7 @@ describe('MVP API flow', () => {
       .get(`/api/v1/rooms/${roomId}/leaderboard`)
       .set('Authorization', `Bearer ${token}`);
     expect(leaderboard.status).toBe(200);
-    const first = leaderboard.body.data.members[0];
+    const first = leaderboard.body.data.list[0];
     expect(first).not.toHaveProperty('initialWeightKg');
     expect(first).not.toHaveProperty('currentWeightKg');
     expect(first).toHaveProperty('weightLossPercent');

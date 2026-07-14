@@ -6,7 +6,8 @@ import { CreateRoomDto, JoinRoomDto } from '../validators/room.schema';
 const ok = (res: Response, data: unknown) => res.json({ code: 0, message: 'ok', data });
 
 export const listRooms = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, roomService.listRooms(req.userId!));
+  const list = roomService.listRooms(req.userId!);
+  ok(res, { list, total: list.length, page: 1, pageSize: 20, hasMore: false });
 });
 
 export const getRoom = asyncHandler(async (req: Request, res: Response) => {
@@ -26,7 +27,9 @@ export const joinRoom = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const getLeaderboard = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, roomService.getLeaderboard(req.params.roomId));
+  const result = roomService.getLeaderboard(req.params.roomId);
+  const myRank = result.list.find((item) => item.userId === req.userId!)?.rank ?? null;
+  ok(res, { ...result, myRank });
 });
 
 export const getSettlement = asyncHandler(async (req: Request, res: Response) => {

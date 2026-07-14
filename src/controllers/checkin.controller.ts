@@ -16,3 +16,8 @@ export const list = asyncHandler(async (req: Request, res: Response) => {
   const data = checkinService.listCheckins(req.params.roomId, req.userId!);
   res.json({ code: 0, message: 'ok', data });
 });
+
+export const today = asyncHandler(async (req: Request, res: Response) => {
+  const data = checkinService.getTodayCheckin(req.params.roomId, req.userId!);
+  res.json({ code: 0, message: 'ok', data });
+});

@@ -8,6 +8,7 @@ import { roomIdParamsSchema } from '../validators/room.schema';
 export const checkinRouter = Router({ mergeParams: true });
 
 checkinRouter.use(authRequired);
+checkinRouter.get('/today', validate(roomIdParamsSchema, 'params'), controller.today);
 checkinRouter.get('/', validate(roomIdParamsSchema, 'params'), controller.list);
 checkinRouter.post(
   '/',
