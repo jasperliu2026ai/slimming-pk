@@ -48,4 +48,6 @@ userRouter.get('/me', authRequired, userController.getProfile);
  *       200: { description: OK }
  */
 userRouter.patch('/me', authRequired, validate(updateProfileSchema), userController.updateProfile);
+// 微信小程序请求层将 PATCH 兼容转换为 PUT。
+userRouter.put('/me', authRequired, validate(updateProfileSchema), userController.updateProfile);
 userRouter.delete('/me', authRequired, userController.deleteProfile);

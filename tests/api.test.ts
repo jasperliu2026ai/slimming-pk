@@ -13,6 +13,7 @@ import { createApp } from '../src/app';
 describe('MVP API flow', () => {
   const app = createApp();
   let token = '';
+  let userId = '';
   let roomId = '';
 
   it('logs in only after privacy consent', async () => {
@@ -24,7 +25,20 @@ describe('MVP API flow', () => {
       .send({ code: 'test-code', privacyAgreed: true });
     expect(response.status).toBe(200);
     token = response.body.data.token;
+    userId = response.body.data.user.id;
     expect(token).toEqual(expect.any(String));
+  });
+
+  it('updates nickname and owned avatar through the mini-program PUT fallback', async () => {
+    const avatarUrl = `Avatar/${userId}/2026-07/avatar.jpg`;
+    const response = await request(app)
+      .put('/api/v1/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nickname: '新昵称', avatarUrl });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.nickname).toBe('新昵称');
+    expect(response.body.data.avatarUrl).toBe(avatarUrl);
   });
 
   it('creates and joins a room', async () => {

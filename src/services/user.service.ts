@@ -5,7 +5,7 @@ import { prisma } from '../config/database';
 import { logger } from '../config/logger';
 import { NotFoundError, UnauthorizedError } from '../utils/AppError';
 import { UpdateProfileDto } from '../validators/user.schema';
-import { deleteManagedObjects } from './storage.service';
+import { assertOwnedObjectKey, deleteManagedObjects } from './storage.service';
 
 function jsonStrings(value: Prisma.JsonValue): string[] {
   return Array.isArray(value)
@@ -86,18 +86,28 @@ export async function getProfile(userId: string) {
 }
 
 export async function updateProfile(userId: string, dto: UpdateProfileDto) {
-  const existing = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  const existing = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, avatarUrl: true },
+  });
   if (!existing) throw new NotFoundError('User not found');
+  if (dto.avatarUrl !== undefined) assertOwnedObjectKey(dto.avatarUrl, userId);
   const user = await prisma.user.update({
     where: { id: userId },
     data: {
       nickname: dto.nickname,
+      avatarUrl: dto.avatarUrl,
       gender: dto.gender,
       heightCm: dto.heightCm,
       targetWeightKg:
         dto.targetWeightKg === undefined ? undefined : new Prisma.Decimal(dto.targetWeightKg),
     },
   });
+  if (dto.avatarUrl && existing.avatarUrl && existing.avatarUrl !== dto.avatarUrl) {
+    deleteManagedObjects([existing.avatarUrl]).catch((error) => {
+      logger.warn({ error, userId }, 'failed to delete replaced avatar');
+    });
+  }
   return toPublicUser(user);
 }
 
