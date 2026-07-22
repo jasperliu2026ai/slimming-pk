@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-const optionalText = z.string().trim().min(5).max(200).optional();
+const optionalText = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().min(1, '打卡内容不能为空').max(200, '打卡内容不能超过 200 个字').optional(),
+);
 
 export const checkinSchema = z
   .object({

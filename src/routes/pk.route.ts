@@ -2,13 +2,23 @@ import { Router } from 'express';
 import { authRequired } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import * as controller from '../controllers/room.controller';
-import { createRoomSchema, joinRoomSchema, roomIdParamsSchema } from '../validators/room.schema';
+import {
+  createRoomSchema,
+  inviteCodeParamsSchema,
+  joinRoomSchema,
+  roomIdParamsSchema,
+} from '../validators/room.schema';
 
 export const pkRouter = Router();
 
 pkRouter.use(authRequired);
 pkRouter.get('/', controller.listRooms);
 pkRouter.post('/', validate(createRoomSchema), controller.createRoom);
+pkRouter.get(
+  '/invite/:inviteCode',
+  validate(inviteCodeParamsSchema, 'params'),
+  controller.getRoomByInviteCode,
+);
 pkRouter.get('/:roomId', validate(roomIdParamsSchema, 'params'), controller.getRoom);
 pkRouter.post(
   '/:roomId/join',

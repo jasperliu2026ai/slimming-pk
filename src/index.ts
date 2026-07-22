@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import { logger } from './config/logger';
+import { prisma } from './config/database';
 
 const app = createApp();
 const server = app.listen(env.PORT, () => {
@@ -8,13 +9,17 @@ const server = app.listen(env.PORT, () => {
 });
 
 // 优雅退出：等已有请求处理完
+let shuttingDown = false;
 function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logger.warn({ signal }, 'shutting down...');
-  server.close((err) => {
+  server.close(async (err) => {
     if (err) {
       logger.error({ err }, 'error during shutdown');
       process.exit(1);
     }
+    await prisma.$disconnect();
     process.exit(0);
   });
   // 兜底：10s 强杀

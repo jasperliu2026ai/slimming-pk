@@ -1,4 +1,3 @@
-// 初版 schema，后续按需求继续拆表
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,20 +8,97 @@ datasource db {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  openid         String    @unique
-  unionid        String?   @unique
-  nickname       String    @default("")
-  avatarUrl      String    @default("")
-  gender         Gender    @default(unknown)
-  heightCm       Int?
-  targetWeightKg Decimal?  @db.Decimal(5, 2)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  checkins       Checkin[]
+  id              String       @id @default(cuid())
+  openid          String       @unique @db.VarChar(128)
+  unionid         String?      @unique @db.VarChar(128)
+  nickname        String       @default("") @db.VarChar(32)
+  avatarUrl       String       @default("") @db.VarChar(500)
+  gender          Gender       @default(unknown)
+  heightCm        Int?
+  targetWeightKg  Decimal?     @db.Decimal(5, 2)
+  currentWeightKg Decimal?     @db.Decimal(5, 2)
+  privacyAgreedAt DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  createdRooms    PkRoom[]     @relation("RoomCreator")
+  roomMemberships RoomMember[]
+  checkins        Checkin[]
 
   @@map("users")
+}
+
+model PkRoom {
+  id           String       @id @default(cuid())
+  inviteCode   String       @unique @db.VarChar(12)
+  name         String       @db.VarChar(20)
+  status       RoomStatus   @default(pending)
+  startDate    DateTime     @db.Date
+  endDate      DateTime     @db.Date
+  durationDays Int
+  maxMembers   Int          @default(5)
+  creatorId    String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  creator      User         @relation("RoomCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  members      RoomMember[]
+  checkins     Checkin[]
+
+  @@index([creatorId, createdAt])
+  @@index([status, startDate])
+  @@map("pk_rooms")
+}
+
+model RoomMember {
+  roomId          String
+  userId          String
+  initialWeightKg Decimal      @db.Decimal(5, 2)
+  initialPhotoKey String       @map("initialPhotoUrl") @db.VarChar(500)
+  currentWeightKg Decimal      @db.Decimal(5, 2)
+  joinedAt        DateTime     @default(now())
+  status          MemberStatus @default(active)
+  room            PkRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@index([userId, status])
+  @@map("room_members")
+}
+
+model Checkin {
+  id                String   @id @default(cuid())
+  roomId            String
+  userId            String
+  checkinDate       DateTime @db.Date
+  weightKg          Decimal? @db.Decimal(5, 2)
+  weightPhotoKey    String?  @map("weightPhotoUrl") @db.VarChar(500)
+  dietText          String?  @db.VarChar(200)
+  dietPhotoUrls     Json
+  exerciseText      String?  @db.VarChar(200)
+  exercisePhotoUrls Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  room              PkRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId, checkinDate])
+  @@index([userId, checkinDate])
+  @@index([roomId, checkinDate])
+  @@map("checkins")
+}
+
+model FundLedger {
+  id          String   @id @default(cuid())
+  userId      String
+  bizType     BizType
+  bizId       String
+  amountCent  Int
+  balanceCent Int
+  remark      String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([bizType, bizId])
+  @@map("fund_ledger")
 }
 
 enum Gender {
@@ -31,40 +107,22 @@ enum Gender {
   unknown
 }
 
-model Checkin {
-  id         String   @id @default(cuid())
-  userId     String
-  weightKg   Decimal  @db.Decimal(5, 2)
-  imageUrl   String?
-  note       String?  @db.VarChar(280)
-  createdAt  DateTime @default(now())
-
-  user       User     @relation(fields: [userId], references: [id])
-
-  @@index([userId, createdAt])
-  @@map("checkins")
+enum RoomStatus {
+  pending
+  active
+  ended
+  dissolved
 }
 
-// 资金流水表：只增不改，作为对账依据
-model FundLedger {
-  id         String     @id @default(cuid())
-  userId     String
-  bizType    BizType
-  bizId      String     // 关联 PK 房间 id / 订单 id 等
-  amountCent Int        // 单位：分；正数入账，负数出账
-  balanceCent Int       // 变动后余额（分）
-  remark     String?    @db.VarChar(255)
-  createdAt  DateTime   @default(now())
-
-  @@index([userId, createdAt])
-  @@index([bizType, bizId])
-  @@map("fund_ledger")
+enum MemberStatus {
+  active
+  withdrawn
 }
 
 enum BizType {
-  deposit    // 押金
-  refund     // 退款
-  reward     // 奖金
-  penalty    // 惩罚扣款
-  adjust     // 人工调账（需审批）
+  deposit
+  refund
+  reward
+  penalty
+  adjust
 }

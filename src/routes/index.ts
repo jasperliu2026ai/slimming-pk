@@ -4,11 +4,13 @@ import { userRouter } from './user.route';
 import { pkRouter } from './pk.route';
 import { checkinRouter } from './checkin.route';
 import { authRouter } from './auth.route';
+import { uploadRouter } from './upload.route';
 
 export const apiRouter = Router();
 
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', userRouter);
+apiRouter.use('/uploads', uploadRouter);
 apiRouter.use('/rooms', pkRouter);
 apiRouter.use('/rooms/:roomId/checkins', checkinRouter);
