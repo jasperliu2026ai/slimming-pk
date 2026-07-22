@@ -57,6 +57,8 @@ pnpm dev
 - API：`http://localhost:3000/api/v1/health`
 - 文档：`http://localhost:3000/docs`
 
+腾讯云 Linux 服务器部署、MySQL 连接和 systemd 配置见 [DEPLOY.md](./DEPLOY.md)。
+
 ## 工程规范红线
 
 - **TypeScript 严格模式**，禁止 `any` 兜底

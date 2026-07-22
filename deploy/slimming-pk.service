@@ -1,0 +1,19 @@
+[Unit]
+Description=Slimming PK backend
+After=network.target
+
+[Service]
+Type=simple
+User=slimpk
+Group=slimpk
+WorkingDirectory=/opt/slimming-pk
+EnvironmentFile=/opt/slimming-pk/.env
+ExecStart=/usr/bin/node /opt/slimming-pk/dist/index.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

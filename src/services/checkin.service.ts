@@ -1,61 +1,103 @@
-import { randomUUID } from 'crypto';
-import { checkins, members, users } from '../store/memoryStore';
+import { Checkin, MemberStatus, Prisma } from '@prisma/client';
+import { prisma } from '../config/database';
 import { ConflictError, NotFoundError } from '../utils/AppError';
 import { CheckinDto } from '../validators/checkin.schema';
+import { assertOwnedObjectKey } from './storage.service';
 
-export function saveTodayCheckin(roomId: string, userId: string, dto: CheckinDto) {
-  const member = members.find(
-    (item) => item.roomId === roomId && item.userId === userId && item.status === 'active',
-  );
-  if (!member) throw new NotFoundError('请先加入该 PK');
+function todayDate() {
+  return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+}
 
-  if (dto.weightKg !== undefined && Math.abs(dto.weightKg - member.currentWeightKg) >= 5) {
-    throw new ConflictError('单日体重变化不能达到 5kg，请检查后重试');
-  }
+function stringArray(value: Prisma.JsonValue): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
+}
 
-  const date = new Date().toISOString().slice(0, 10);
-  const existing = checkins.find(
-    (item) => item.roomId === roomId && item.userId === userId && item.date === date,
-  );
-  const timestamp = new Date().toISOString();
-  if (existing) {
-    Object.assign(existing, dto, { updatedAt: timestamp });
-    if (dto.weightKg !== undefined) member.currentWeightKg = dto.weightKg;
-    return existing;
-  }
-
-  const checkin = {
-    id: `checkin-${randomUUID()}`,
-    roomId,
-    userId,
-    date,
-    ...dto,
-    dietPhotoUrls: dto.dietPhotoUrls ?? [],
-    exercisePhotoUrls: dto.exercisePhotoUrls ?? [],
-    createdAt: timestamp,
-    updatedAt: timestamp,
+function toPublicCheckin(checkin: Checkin) {
+  return {
+    ...checkin,
+    date: checkin.checkinDate.toISOString().slice(0, 10),
+    weightKg: checkin.weightKg === null ? undefined : Number(checkin.weightKg),
+    weightPhotoUrl: checkin.weightPhotoKey ?? undefined,
+    dietPhotoUrls: stringArray(checkin.dietPhotoUrls),
+    exercisePhotoUrls: stringArray(checkin.exercisePhotoUrls),
+    createdAt: checkin.createdAt.toISOString(),
+    updatedAt: checkin.updatedAt.toISOString(),
+    checkinDate: undefined,
+    weightPhotoKey: undefined,
   };
-  checkins.push(checkin);
-  member.checkinDays += 1;
-  if (dto.weightKg !== undefined) {
-    member.currentWeightKg = dto.weightKg;
-    const user = users.get(userId);
-    if (user) user.currentWeightKg = dto.weightKg;
-  }
-  return checkin;
 }
 
-export function listCheckins(roomId: string, userId: string) {
-  return checkins
-    .filter((item) => item.roomId === roomId && item.userId === userId)
-    .sort((a, b) => b.date.localeCompare(a.date));
+export async function saveTodayCheckin(roomId: string, userId: string, dto: CheckinDto) {
+  return prisma.$transaction(async (tx) => {
+    const member = await tx.roomMember.findUnique({
+      where: { roomId_userId: { roomId, userId } },
+    });
+    if (!member || member.status !== MemberStatus.active) {
+      throw new NotFoundError('请先加入该 PK');
+    }
+    if (
+      dto.weightKg !== undefined &&
+      Math.abs(dto.weightKg - Number(member.currentWeightKg)) >= 5
+    ) {
+      throw new ConflictError('单日体重变化不能达到 5kg，请检查后重试');
+    }
+    const photoReferences = [
+      dto.weightPhotoUrl,
+      ...dto.dietPhotoUrls,
+      ...dto.exercisePhotoUrls,
+    ].filter((value): value is string => Boolean(value));
+    photoReferences.forEach((value) => assertOwnedObjectKey(value, userId));
+
+    const checkinDate = todayDate();
+    const checkin = await tx.checkin.upsert({
+      where: { roomId_userId_checkinDate: { roomId, userId, checkinDate } },
+      update: {
+        weightKg: dto.weightKg,
+        weightPhotoKey: dto.weightPhotoUrl,
+        dietText: dto.dietText,
+        dietPhotoUrls: dto.dietPhotoUrls,
+        exerciseText: dto.exerciseText,
+        exercisePhotoUrls: dto.exercisePhotoUrls,
+      },
+      create: {
+        roomId,
+        userId,
+        checkinDate,
+        weightKg: dto.weightKg,
+        weightPhotoKey: dto.weightPhotoUrl,
+        dietText: dto.dietText,
+        dietPhotoUrls: dto.dietPhotoUrls,
+        exerciseText: dto.exerciseText,
+        exercisePhotoUrls: dto.exercisePhotoUrls,
+      },
+    });
+    if (dto.weightKg !== undefined) {
+      const weight = new Prisma.Decimal(dto.weightKg);
+      await Promise.all([
+        tx.roomMember.update({
+          where: { roomId_userId: { roomId, userId } },
+          data: { currentWeightKg: weight },
+        }),
+        tx.user.update({ where: { id: userId }, data: { currentWeightKg: weight } }),
+      ]);
+    }
+    return toPublicCheckin(checkin);
+  });
 }
 
-export function getTodayCheckin(roomId: string, userId: string) {
-  const date = new Date().toISOString().slice(0, 10);
-  return (
-    checkins.find(
-      (item) => item.roomId === roomId && item.userId === userId && item.date === date,
-    ) ?? null
-  );
+export async function listCheckins(roomId: string, userId: string) {
+  const rows = await prisma.checkin.findMany({
+    where: { roomId, userId },
+    orderBy: { checkinDate: 'desc' },
+  });
+  return rows.map(toPublicCheckin);
+}
+
+export async function getTodayCheckin(roomId: string, userId: string) {
+  const row = await prisma.checkin.findUnique({
+    where: { roomId_userId_checkinDate: { roomId, userId, checkinDate: todayDate() } },
+  });
+  return row ? toPublicCheckin(row) : null;
 }

@@ -6,18 +6,19 @@
 
 - Node.js ≥ 18（推荐 20 LTS）
 - pnpm ≥ 8（`corepack enable && corepack prepare pnpm@latest --activate`）
-- 本地 MySQL 8.x（或用 Docker 起一个）
+- 本地 MySQL 8.x（当前 Mac 已在工作区安装官方 MySQL 8.4 LTS）
 - 本地 Redis 6.x（可选，后续接入时才需要）
 
-快速拉一个 MySQL（Docker）：
+当前电脑启动、查看和停止本地 MySQL：
 
 ```bash
-docker run -d --name fitpk-mysql \
-  -e MYSQL_ROOT_PASSWORD=root \
-  -e MYSQL_DATABASE=fitpk \
-  -p 3306:3306 \
-  mysql:8
+pnpm db:start
+pnpm db:status
+pnpm db:stop
 ```
+
+MySQL 程序目录：`../.local/mysql-8.4.10-macos15-arm64`；数据目录：`../.data/mysql`。
+它只监听 `127.0.0.1:3306`，不会对局域网或公网开放。
 
 ## 1. 安装依赖
 
@@ -43,14 +44,15 @@ cp env.example.txt .env
 # 生成 Prisma Client（第一次和每次改 schema 后都要跑）
 pnpm prisma:generate
 
-# 应用首次 migration（会读 DATABASE_URL 建表）
-pnpm prisma migrate dev --name init
+# 应用仓库中已有的 migration，并写入本地演示初始数据
+pnpm prisma:deploy
+pnpm prisma:seed
 ```
 
 如果 `migrate dev` 报连不上库，先确认：
 - MySQL 起来了
 - `DATABASE_URL` 里的账号/密码/端口/库名正确
-- 库 `fitpk` 已存在（Prisma 会自动建，但账号要有 CREATE 权限）
+- 库 `slimming_pk` 已存在，且账号拥有迁移权限
 
 ## 4. 启动 dev server
 
@@ -101,11 +103,12 @@ docker run --rm -p 3000:3000 --env-file .env fitpk-server:dev
 | Swagger `/docs` 404 | 确认 `NODE_ENV` 和路由前缀 `/api/v1` 没被改 |
 | husky prepare 失败 | 首次没有 `.git` 或 husky 没装，忽略即可（`|| true` 已兜底） |
 
-## 8. 下一步
+## 8. 当前持久化范围
 
-脚手架里以下模块目前是 stub / TODO，按优先级推进：
+用户、PK 房间、成员关系、打卡记录和排行榜已通过 Prisma 接入 MySQL。排行榜不保存绝对体重，按数据库中的成员和打卡记录实时计算。支付模块仍未启用。
 
-1. `src/services/user.service.ts`：接入真实微信 `code2session` + Prisma 落库
-2. `src/routes/pk.route.ts`：按 `docs/pk-state-machine.md` 实现房间状态机
-3. `src/routes/checkin.route.ts`：打卡+防作弊
-4. `src/routes/payment.route.ts`：押金/结算/退款（依赖 PK 状态机）
+## 9. 腾讯云 COS
+
+项目使用私有存储桶 `database-1257734014`（`ap-guangzhou`）。头像写入 `Avatar/`，打卡照片写入 `checkin/`，不会修改现有 `Static/` 内容。
+
+在 `.env` 中填写 CAM 子账号的 `COS_SECRET_ID` 与 `COS_SECRET_KEY` 后重启后端。该子账号只需目标目录的 `cos:PutObject`、`cos:GetObject` 和 `cos:DeleteObject` 权限。小程序照片通过后端 `/api/v1/uploads/images` 上传，数据库只保存对象 Key；私有预览通过 `/api/v1/uploads/signed-url` 获取五分钟有效链接。

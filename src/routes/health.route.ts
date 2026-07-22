@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { prisma } from '../config/database';
 
 export const healthRouter = Router();
 
@@ -12,6 +13,11 @@ export const healthRouter = Router();
  *       200:
  *         description: OK
  */
-healthRouter.get('/', (_req, res) => {
-  res.json({ code: 0, message: 'ok', data: { status: 'ok', ts: Date.now() } });
+healthRouter.get('/', async (_req, res) => {
+  await prisma.$queryRaw`SELECT 1`;
+  res.json({
+    code: 0,
+    message: 'ok',
+    data: { status: 'ok', database: 'ok', ts: Date.now() },
+  });
 });

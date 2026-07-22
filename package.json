@@ -16,6 +16,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "db:start": "bash scripts/local-mysql.sh start",
+    "db:stop": "bash scripts/local-mysql.sh stop",
+    "db:status": "bash scripts/local-mysql.sh status",
     "prepare": "husky install || true"
   },
   "engines": {
@@ -26,12 +30,14 @@
     "@prisma/client": "^5.19.0",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
+    "cos-nodejs-sdk-v5": "^3.0.0",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-async-errors": "^3.1.1",
     "express-rate-limit": "^7.4.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
     "pino": "^9.4.0",
     "pino-http": "^10.3.0",
     "swagger-jsdoc": "^6.2.8",
@@ -45,6 +51,7 @@
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.13",
     "@types/jsonwebtoken": "^9.0.6",
+    "@types/multer": "^2.2.0",
     "@types/node": "^20.16.5",
     "@types/supertest": "^6.0.2",
     "@types/swagger-jsdoc": "^6.0.4",
@@ -71,5 +78,8 @@
       "eslint --fix",
       "prettier --write"
     ]
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   }
 }
