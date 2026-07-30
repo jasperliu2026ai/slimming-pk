@@ -9,6 +9,8 @@ process.env.COS_SECRET_KEY = '';
 
 import request from 'supertest';
 import { createApp } from '../src/app';
+import { prisma } from '../src/config/database';
+import { shanghaiDateString } from '../src/utils/date';
 
 describe('MVP API flow', () => {
   const app = createApp();
@@ -41,20 +43,23 @@ describe('MVP API flow', () => {
     expect(response.body.data.avatarUrl).toBe(avatarUrl);
   });
 
-  it('creates and joins a room', async () => {
+  it('creates a room and automatically joins the creator', async () => {
     const created = await request(app)
       .post('/api/v1/rooms')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: '测试 PK', durationDays: 7, startDate: '2026-07-14' });
+      .send({
+        name: '测试 PK',
+        durationDays: 7,
+        startDate: shanghaiDateString(),
+        initialWeightKg: 63.2,
+        initialPhotoUrl: 'local://initial',
+      });
     expect(created.status).toBe(201);
     roomId = created.body.data.id;
-
-    const joined = await request(app)
-      .post(`/api/v1/rooms/${roomId}/join`)
-      .set('Authorization', `Bearer ${token}`)
-      .send({ initialWeightKg: 63.2, initialPhotoUrl: 'local://initial' });
-    expect(joined.status).toBe(200);
-    expect(joined.body.data.isMember).toBe(true);
+    expect(created.body.data.isMember).toBe(true);
+    expect(created.body.data.memberCount).toBe(1);
+    expect(created.body.data.myInitialWeightKg).toBe(63.2);
+    expect(created.body.data.myCurrentWeightKg).toBe(63.2);
   });
 
   it('protects the upload endpoint and reports missing COS credentials', async () => {
@@ -119,14 +124,77 @@ describe('MVP API flow', () => {
       .get(`/api/v1/rooms/${roomId}/checkins`)
       .set('Authorization', `Bearer ${token}`);
     expect(checkins.body.data).toHaveLength(1);
+    expect(checkins.body.data[0].dietText).toBe('少油');
+    expect(checkins.body.data[0].exerciseText).toBe('走路');
+
+    await prisma.user.upsert({
+      where: { id: 'ranking-many-checkins' },
+      update: {},
+      create: {
+        id: 'ranking-many-checkins',
+        openid: 'ranking-many-checkins-openid',
+        nickname: '打卡多但减重少',
+      },
+    });
+    await prisma.user.upsert({
+      where: { id: 'ranking-tied-loss' },
+      update: {},
+      create: {
+        id: 'ranking-tied-loss',
+        openid: 'ranking-tied-loss-openid',
+        nickname: '同减重',
+      },
+    });
+    await prisma.roomMember.createMany({
+      data: [
+        {
+          roomId,
+          userId: 'ranking-many-checkins',
+          initialWeightKg: 80,
+          currentWeightKg: 79.7,
+          initialPhotoKey: 'local://ranking-many-checkins',
+        },
+        {
+          roomId,
+          userId: 'ranking-tied-loss',
+          initialWeightKg: 70,
+          currentWeightKg: 69.6,
+          initialPhotoKey: 'local://ranking-tied-loss',
+        },
+      ],
+    });
+    await prisma.checkin.createMany({
+      data: Array.from({ length: 7 }, (_, index) => ({
+        roomId,
+        userId: 'ranking-many-checkins',
+        checkinDate: new Date(Date.UTC(2026, 0, index + 1)),
+        dietPhotoUrls: [],
+        exercisePhotoUrls: [],
+      })),
+    });
 
     const leaderboard = await request(app)
       .get(`/api/v1/rooms/${roomId}/leaderboard`)
       .set('Authorization', `Bearer ${token}`);
     expect(leaderboard.status).toBe(200);
-    const first = leaderboard.body.data.list[0];
+    const [first, second, third] = leaderboard.body.data.list;
     expect(first).not.toHaveProperty('initialWeightKg');
     expect(first).not.toHaveProperty('currentWeightKg');
+    expect(first.weightLossKg).toBe(0.4);
+    expect(first.score).toBe(40);
     expect(first).toHaveProperty('weightLossPercent');
+    expect(first.rank).toBe(1);
+    expect(second.weightLossKg).toBe(0.4);
+    expect(second.rank).toBe(1);
+    expect(third.nickname).toBe('打卡多但减重少');
+    expect(third.weightLossKg).toBe(0.3);
+    expect(third.checkinDays).toBe(7);
+    expect(third.rank).toBe(3);
+
+    const room = await request(app)
+      .get(`/api/v1/rooms/${roomId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(room.body.data.myInitialWeightKg).toBe(63.2);
+    expect(room.body.data.myCurrentWeightKg).toBe(62.8);
   });
 });

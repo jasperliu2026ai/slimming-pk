@@ -1,11 +1,12 @@
-import { Checkin, MemberStatus, Prisma } from '@prisma/client';
+import { Checkin, MemberStatus, Prisma, RoomStatus } from '@prisma/client';
 import { prisma } from '../config/database';
 import { ConflictError, NotFoundError } from '../utils/AppError';
+import { dateOnly, shanghaiDateString } from '../utils/date';
 import { CheckinDto } from '../validators/checkin.schema';
 import { assertOwnedObjectKey } from './storage.service';
 
 function todayDate() {
-  return new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
+  return dateOnly(shanghaiDateString());
 }
 
 function stringArray(value: Prisma.JsonValue): string[] {
@@ -33,9 +34,16 @@ export async function saveTodayCheckin(roomId: string, userId: string, dto: Chec
   return prisma.$transaction(async (tx) => {
     const member = await tx.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
+      include: { room: true },
     });
     if (!member || member.status !== MemberStatus.active) {
       throw new NotFoundError('请先加入该 PK');
+    }
+    const today = shanghaiDateString();
+    const startDate = member.room.startDate.toISOString().slice(0, 10);
+    const endDate = member.room.endDate.toISOString().slice(0, 10);
+    if (member.room.status === RoomStatus.dissolved || today < startDate || today > endDate) {
+      throw new ConflictError(today < startDate ? '该 PK 尚未开始' : '该 PK 已结束，无法继续打卡');
     }
     if (
       dto.weightKg !== undefined &&
@@ -45,8 +53,8 @@ export async function saveTodayCheckin(roomId: string, userId: string, dto: Chec
     }
     const photoReferences = [
       dto.weightPhotoUrl,
-      ...dto.dietPhotoUrls,
-      ...dto.exercisePhotoUrls,
+      ...(dto.dietPhotoUrls ?? []),
+      ...(dto.exercisePhotoUrls ?? []),
     ].filter((value): value is string => Boolean(value));
     photoReferences.forEach((value) => assertOwnedObjectKey(value, userId));
 
@@ -68,9 +76,9 @@ export async function saveTodayCheckin(roomId: string, userId: string, dto: Chec
         weightKg: dto.weightKg,
         weightPhotoKey: dto.weightPhotoUrl,
         dietText: dto.dietText,
-        dietPhotoUrls: dto.dietPhotoUrls,
+        dietPhotoUrls: dto.dietPhotoUrls ?? [],
         exerciseText: dto.exerciseText,
-        exercisePhotoUrls: dto.exercisePhotoUrls,
+        exercisePhotoUrls: dto.exercisePhotoUrls ?? [],
       },
     });
     if (dto.weightKg !== undefined) {

@@ -18,6 +18,8 @@ export const createRoomSchema = z.object({
   durationDays: z.number().int().min(7).max(90),
   maxMembers: z.number().int().min(2).max(8).default(5),
   startDate: z.string().regex(datePattern, 'startDate must be YYYY-MM-DD'),
+  initialWeightKg: z.number().min(30).max(300),
+  initialPhotoUrl: z.string().min(1),
 });
 
 export const joinRoomSchema = z.object({

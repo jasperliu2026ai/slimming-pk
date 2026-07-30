@@ -71,6 +71,10 @@ export async function uploadPrivateImage(input: {
 
 export async function getSignedObjectUrl(objectKey: string, userId: string) {
   assertOwnedObjectKey(objectKey, userId);
+  return signObjectUrl(objectKey);
+}
+
+async function signObjectUrl(objectKey: string) {
   const result = await new Promise<COS.GetObjectUrlResult>((resolve, reject) => {
     getCosClient().getObjectUrl(
       {
@@ -86,6 +90,13 @@ export async function getSignedObjectUrl(objectKey: string, userId: string) {
     );
   });
   return result.Url;
+}
+
+export async function getSignedAvatarUrl(objectKey: string) {
+  if (!objectKey) return '';
+  if (objectKey.startsWith('https://')) return objectKey;
+  if (!objectKey.startsWith('Avatar/')) return '';
+  return signObjectUrl(objectKey);
 }
 
 export async function deleteManagedObjects(objectKeys: string[]) {

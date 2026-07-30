@@ -10,9 +10,9 @@ export const checkinSchema = z
     weightKg: z.number().min(30).max(300).optional(),
     weightPhotoUrl: z.string().min(1).optional(),
     dietText: optionalText,
-    dietPhotoUrls: z.array(z.string().min(1)).max(9).default([]),
+    dietPhotoUrls: z.array(z.string().min(1)).max(9).optional(),
     exerciseText: optionalText,
-    exercisePhotoUrls: z.array(z.string().min(1)).max(9).default([]),
+    exercisePhotoUrls: z.array(z.string().min(1)).max(9).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.weightKg !== undefined && !value.weightPhotoUrl) {
@@ -25,9 +25,9 @@ export const checkinSchema = z
     const hasAny =
       value.weightKg !== undefined ||
       Boolean(value.dietText) ||
-      value.dietPhotoUrls.length > 0 ||
+      Boolean(value.dietPhotoUrls?.length) ||
       Boolean(value.exerciseText) ||
-      value.exercisePhotoUrls.length > 0;
+      Boolean(value.exercisePhotoUrls?.length);
     if (!hasAny) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: '至少填写一种打卡内容' });
     }

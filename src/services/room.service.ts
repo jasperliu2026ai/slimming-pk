@@ -1,8 +1,10 @@
 import { MemberStatus, Prisma, PrismaClient, RoomStatus } from '@prisma/client';
 import { prisma } from '../config/database';
+import { logger } from '../config/logger';
 import { ConflictError, NotFoundError } from '../utils/AppError';
+import { dateOnly, shanghaiDateString } from '../utils/date';
 import { CreateRoomDto, JoinRoomDto } from '../validators/room.schema';
-import { assertOwnedObjectKey } from './storage.service';
+import { assertOwnedObjectKey, getSignedAvatarUrl } from './storage.service';
 
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
@@ -16,10 +18,6 @@ const roomInclude = {
 
 type RoomWithMembers = Prisma.PkRoomGetPayload<{ include: typeof roomInclude }>;
 
-function dateOnly(value: string) {
-  return new Date(`${value}T00:00:00.000Z`);
-}
-
 function dateString(value: Date) {
   return value.toISOString().slice(0, 10);
 }
@@ -30,6 +28,15 @@ function addDays(date: string, days: number) {
   return value;
 }
 
+function effectiveRoomStatus(room: Pick<RoomWithMembers, 'status' | 'startDate' | 'endDate'>) {
+  if (room.status === RoomStatus.dissolved) return RoomStatus.dissolved;
+  if (room.status === RoomStatus.ended) return RoomStatus.ended;
+  const today = shanghaiDateString();
+  if (today < dateString(room.startDate)) return RoomStatus.pending;
+  if (today > dateString(room.endDate)) return RoomStatus.ended;
+  return RoomStatus.active;
+}
+
 async function loadRanking(client: DbClient, room: RoomWithMembers) {
   const counts = await client.checkin.groupBy({
     by: ['userId'],
@@ -37,40 +44,58 @@ async function loadRanking(client: DbClient, room: RoomWithMembers) {
     _count: { _all: true },
   });
   const countByUser = new Map(counts.map((item) => [item.userId, item._count._all]));
-  return room.members
-    .map((member) => {
+  const ranking = await Promise.all(
+    room.members.map(async (member) => {
       const initialWeightKg = Number(member.initialWeightKg);
-      const currentWeightKg = Number(member.currentWeightKg);
       const checkinDays = countByUser.get(member.userId) ?? 0;
+      const weightLossKg = Math.max(
+        0,
+        Number(member.initialWeightKg.minus(member.currentWeightKg).toFixed(2)),
+      );
       const weightLossPercent = Math.max(
         0,
-        Number((((initialWeightKg - currentWeightKg) / initialWeightKg) * 100).toFixed(2)),
+        Number(((weightLossKg / initialWeightKg) * 100).toFixed(2)),
       );
-      const checkinRate = Math.min(1, checkinDays / room.durationDays);
-      const score = Math.min(100, Math.round(weightLossPercent * 14 + checkinRate * 30));
+      let avatarUrl = '';
+      try {
+        avatarUrl = await getSignedAvatarUrl(member.user.avatarUrl);
+      } catch (error) {
+        logger.warn({ error, userId: member.userId }, 'failed to sign leaderboard avatar');
+      }
       return {
         userId: member.userId,
         nickname: member.user.nickname,
-        avatarUrl: member.user.avatarUrl,
-        score,
+        avatarUrl,
+        // 兼容旧客户端：积分只由实际减重产生，1kg = 100 分。
+        score: Math.round(weightLossKg * 100),
+        weightLossKg,
         weightLossPercent,
         checkinDays,
         totalDays: room.durationDays,
         status: member.status,
       };
-    })
-    .sort((a, b) => b.score - a.score || b.weightLossPercent - a.weightLossPercent)
-    .map((item, index) => ({ ...item, rank: index + 1 }));
+    }),
+  );
+  ranking.sort((a, b) => b.weightLossKg - a.weightLossKg);
+  let previousLossKg: number | null = null;
+  let previousRank = 0;
+  return ranking.map((item, index) => {
+    const rank = previousLossKg === item.weightLossKg ? previousRank : index + 1;
+    previousLossKg = item.weightLossKg;
+    previousRank = rank;
+    return { ...item, rank };
+  });
 }
 
 async function toPublicRoom(client: DbClient, room: RoomWithMembers, userId: string) {
   const ranking = await loadRanking(client, room);
   const myProgress = ranking.find((item) => item.userId === userId);
+  const myMembership = room.members.find((item) => item.userId === userId);
   return {
     id: room.id,
     inviteCode: room.inviteCode,
     name: room.name,
-    status: room.status,
+    status: effectiveRoomStatus(room),
     startDate: dateString(room.startDate),
     endDate: dateString(room.endDate),
     durationDays: room.durationDays,
@@ -81,6 +106,9 @@ async function toPublicRoom(client: DbClient, room: RoomWithMembers, userId: str
     memberCount: room.members.length,
     isMember: Boolean(myProgress),
     myProgress,
+    // 仅返回当前登录用户自己的绝对体重，避免排行榜泄露其他成员隐私。
+    myInitialWeightKg: myMembership ? Number(myMembership.initialWeightKg) : undefined,
+    myCurrentWeightKg: myMembership ? Number(myMembership.currentWeightKg) : undefined,
   };
 }
 
@@ -92,6 +120,9 @@ async function findRoomOrThrow(client: DbClient, roomId: string) {
 
 export async function listRooms(userId: string) {
   const rooms = await prisma.pkRoom.findMany({
+    where: {
+      OR: [{ creatorId: userId }, { members: { some: { userId, status: MemberStatus.active } } }],
+    },
     include: roomInclude,
     orderBy: { createdAt: 'desc' },
   });
@@ -108,7 +139,8 @@ export async function getRoomByInviteCode(inviteCode: string, userId: string) {
     include: roomInclude,
   });
   if (!room) throw new NotFoundError('邀请码无效或 PK 已结束');
-  if (room.status === RoomStatus.ended || room.status === RoomStatus.dissolved) {
+  const status = effectiveRoomStatus(room);
+  if (status === RoomStatus.ended || status === RoomStatus.dissolved) {
     throw new NotFoundError('该 PK 已结束，暂时无法加入');
   }
   return toPublicRoom(prisma, room, userId);
@@ -127,22 +159,44 @@ async function createInviteCode() {
 }
 
 export async function createRoom(userId: string, dto: CreateRoomDto) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
-  if (!user) throw new NotFoundError('用户不存在');
-  const room = await prisma.pkRoom.create({
-    data: {
-      inviteCode: await createInviteCode(),
-      name: dto.name,
-      status: dto.startDate <= dateString(new Date()) ? RoomStatus.active : RoomStatus.pending,
-      startDate: dateOnly(dto.startDate),
-      endDate: addDays(dto.startDate, dto.durationDays),
-      durationDays: dto.durationDays,
-      maxMembers: dto.maxMembers,
-      creatorId: userId,
+  assertOwnedObjectKey(dto.initialPhotoUrl, userId);
+  const inviteCode = await createInviteCode();
+  return prisma.$transaction(
+    async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
+      if (!user) throw new NotFoundError('用户不存在');
+      const room = await tx.pkRoom.create({
+        data: {
+          inviteCode,
+          name: dto.name,
+          status: dto.startDate <= shanghaiDateString() ? RoomStatus.active : RoomStatus.pending,
+          startDate: dateOnly(dto.startDate),
+          endDate: addDays(dto.startDate, dto.durationDays),
+          durationDays: dto.durationDays,
+          maxMembers: dto.maxMembers,
+          creatorId: userId,
+        },
+      });
+      const weight = new Prisma.Decimal(dto.initialWeightKg);
+      await Promise.all([
+        tx.roomMember.create({
+          data: {
+            roomId: room.id,
+            userId,
+            initialWeightKg: weight,
+            initialPhotoKey: dto.initialPhotoUrl,
+            currentWeightKg: weight,
+          },
+        }),
+        tx.user.update({
+          where: { id: userId },
+          data: { currentWeightKg: weight },
+        }),
+      ]);
+      return toPublicRoom(tx, await findRoomOrThrow(tx, room.id), userId);
     },
-    include: roomInclude,
-  });
-  return toPublicRoom(prisma, room, userId);
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 export async function joinRoom(roomId: string, userId: string, dto: JoinRoomDto) {
@@ -152,7 +206,8 @@ export async function joinRoom(roomId: string, userId: string, dto: JoinRoomDto)
       const room = await findRoomOrThrow(tx, roomId);
       const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true } });
       if (!user) throw new NotFoundError('用户不存在');
-      if (room.status === RoomStatus.ended || room.status === RoomStatus.dissolved) {
+      const status = effectiveRoomStatus(room);
+      if (status === RoomStatus.ended || status === RoomStatus.dissolved) {
         throw new ConflictError('该 PK 已无法加入');
       }
       if (room.members.length >= room.maxMembers) throw new ConflictError('该 PK 人数已满');
@@ -195,9 +250,10 @@ export async function getSettlement(roomId: string, userId: string) {
   return {
     roomId,
     roomName: room.name,
-    status: room.status,
+    status: effectiveRoomStatus(room),
     myRank: mine?.rank ?? null,
     myScore: mine?.score ?? 0,
+    myWeightLossKg: mine?.weightLossKg ?? 0,
     myWeightLossPercent: mine?.weightLossPercent ?? 0,
     totalMembers: ranking.length,
     winners: ranking.slice(0, 3),
