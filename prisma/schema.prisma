@@ -17,6 +17,7 @@ model User {
   heightCm                   Int?
   targetWeightKg             Decimal?            @db.Decimal(5, 2)
   currentWeightKg            Decimal?            @db.Decimal(5, 2)
+  preferredWeightUnit        WeightUnit          @default(kg)
   testOwnerId                String?             @map("test_owner_id")
   privacyAgreedAt            DateTime?
   createdAt                  DateTime            @default(now())
@@ -156,6 +157,11 @@ enum Gender {
   male
   female
   unknown
+}
+
+enum WeightUnit {
+  kg
+  jin
 }
 
 enum RoomStatus {

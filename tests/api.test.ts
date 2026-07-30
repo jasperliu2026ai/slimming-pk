@@ -37,11 +37,12 @@ describe('MVP API flow', () => {
     const response = await request(app)
       .put('/api/v1/users/me')
       .set('Authorization', `Bearer ${token}`)
-      .send({ nickname: '新昵称', avatarUrl });
+      .send({ nickname: '新昵称', avatarUrl, preferredWeightUnit: 'jin' });
 
     expect(response.status).toBe(200);
     expect(response.body.data.nickname).toBe('新昵称');
     expect(response.body.data.avatarUrl).toBe(avatarUrl);
+    expect(response.body.data.preferredWeightUnit).toBe('jin');
   });
 
   it('creates, switches and permanently deletes a password-protected test account', async () => {

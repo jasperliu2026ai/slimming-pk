@@ -14,6 +14,7 @@ export const updateProfileSchema = z.object({
   gender: z.enum(['male', 'female', 'unknown']).optional(),
   heightCm: z.number().int().min(50).max(260).optional(),
   targetWeightKg: z.number().min(20).max(300).optional(),
+  preferredWeightUnit: z.enum(['kg', 'jin']).optional(),
 });
 export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
 

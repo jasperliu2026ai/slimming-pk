@@ -237,6 +237,7 @@ export async function updateProfile(userId: string, dto: UpdateProfileDto) {
       avatarUrl: dto.avatarUrl,
       gender: dto.gender,
       heightCm: dto.heightCm,
+      preferredWeightUnit: dto.preferredWeightUnit,
       targetWeightKg:
         dto.targetWeightKg === undefined ? undefined : new Prisma.Decimal(dto.targetWeightKg),
     },
