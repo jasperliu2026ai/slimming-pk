@@ -36,6 +36,7 @@ export function isManagedObjectKey(value: string) {
 }
 
 export function assertOwnedObjectKey(value: string, userId: string) {
+  if (!value) return;
   if (env.NODE_ENV !== 'production' && value.startsWith('local://')) return;
   if (!value.startsWith(`Avatar/${userId}/`) && !value.startsWith(`checkin/${userId}/`)) {
     throw new ForbiddenError('照片不属于当前用户');

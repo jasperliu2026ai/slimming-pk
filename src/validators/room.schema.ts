@@ -24,12 +24,12 @@ export const createRoomSchema = z.object({
   maxMembers: z.number().int().min(2).max(100).default(5),
   startDate: z.string().regex(datePattern, 'startDate must be YYYY-MM-DD'),
   initialWeightKg: z.number().min(30).max(300),
-  initialPhotoUrl: z.string().min(1),
+  initialPhotoUrl: z.string().max(500).optional().default(''),
 });
 
 export const joinRoomSchema = z.object({
   initialWeightKg: z.number().min(30).max(300),
-  initialPhotoUrl: z.string().min(1),
+  initialPhotoUrl: z.string().max(500).optional().default(''),
 });
 
 export const decideJoinRequestSchema = z.object({

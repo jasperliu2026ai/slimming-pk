@@ -112,7 +112,6 @@ describe('MVP API flow', () => {
         durationDays: 7,
         startDate: shanghaiDateString(),
         initialWeightKg: 63.2,
-        initialPhotoUrl: 'local://initial',
       });
     expect(created.status).toBe(201);
     roomId = created.body.data.id;
@@ -149,7 +148,6 @@ describe('MVP API flow', () => {
       .set('Authorization', `Bearer ${applicantToken}`)
       .send({
         initialWeightKg: 66.5,
-        initialPhotoUrl: 'local://join-request',
       });
     expect(applied.status).toBe(201);
     expect(applied.body.data.status).toBe('pending');
