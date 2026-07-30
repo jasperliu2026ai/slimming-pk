@@ -12,6 +12,7 @@ import { createApp } from '../src/app';
 describe('GET /api/v1/health', () => {
   it('returns 200 ok', async () => {
     const app = createApp();
+    expect(app.get('trust proxy')).toBe('loopback');
     const res = await request(app).get('/api/v1/health');
     expect(res.status).toBe(200);
     expect(res.body.data.status).toBe('ok');

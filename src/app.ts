@@ -17,6 +17,10 @@ import { apiRouter } from './routes';
 export function createApp() {
   const app = express();
 
+  // Nginx 与 Node 部署在同一台服务器，只信任来自本机反向代理的转发头。
+  // 这样限流可识别真实访客 IP，同时避免公网直连 3000 时伪造 X-Forwarded-For。
+  app.set('trust proxy', 'loopback');
+
   // 安全 & 通用中间件
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN }));
