@@ -172,8 +172,10 @@ describe('MVP API flow', () => {
     expect(pending.status).toBe(200);
     expect(pending.body.data.list).toHaveLength(1);
 
+    // 模拟微信小程序：wx.request 将 PATCH 转成携带 override 头的 PUT。
     const approved = await request(app)
-      .patch(`/api/v1/rooms/${roomId}/join-requests/${applied.body.data.id}`)
+      .put(`/api/v1/rooms/${roomId}/join-requests/${applied.body.data.id}`)
+      .set('X-HTTP-Method-Override', 'PATCH')
       .set('Authorization', `Bearer ${token}`)
       .send({ action: 'approve' });
     expect(approved.status).toBe(200);

@@ -28,6 +28,16 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
 
+  // 微信小程序 wx.request 不支持 PATCH。前端会发送 PUT，并通过该请求头
+  // 表明真实语义；在进入路由前还原，兼容资料修改和加入申请审批。
+  app.use((req, _res, next) => {
+    const methodOverride = req.header('x-http-method-override');
+    if (req.method === 'PUT' && methodOverride?.toUpperCase() === 'PATCH') {
+      req.method = 'PATCH';
+    }
+    next();
+  });
+
   // 请求上下文（traceId） + 日志
   app.use(requestContext);
   app.use(
