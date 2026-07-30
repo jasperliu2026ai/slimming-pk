@@ -1,7 +1,14 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { validate } from '../middlewares/validate';
 import { authRequired } from '../middlewares/auth';
-import { updateProfileSchema } from '../validators/user.schema';
+import {
+  createTestAccountSchema,
+  switchTestAccountSchema,
+  testAccountParamsSchema,
+  unlockTestAccountsSchema,
+  updateProfileSchema,
+} from '../validators/user.schema';
 import * as userController from '../controllers/user.controller';
 
 export const userRouter = Router();
@@ -36,6 +43,39 @@ export const userRouter = Router();
  *       401: { description: Unauthorized }
  */
 userRouter.get('/me', authRequired, userController.getProfile);
+
+const testAdminUnlockLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+userRouter.post(
+  '/test-accounts/unlock',
+  authRequired,
+  testAdminUnlockLimiter,
+  validate(unlockTestAccountsSchema),
+  userController.unlockTestAccounts,
+);
+userRouter.post(
+  '/test-accounts',
+  authRequired,
+  validate(createTestAccountSchema),
+  userController.createTestAccount,
+);
+userRouter.post(
+  '/test-accounts/switch',
+  authRequired,
+  validate(switchTestAccountSchema),
+  userController.switchTestAccount,
+);
+userRouter.delete(
+  '/test-accounts/:accountId',
+  authRequired,
+  validate(testAccountParamsSchema, 'params'),
+  userController.deleteTestAccount,
+);
 
 /**
  * @openapi

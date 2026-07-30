@@ -8,6 +8,7 @@ export const logger = pino({
     // 敏感字段脱敏，避免落日志
     paths: [
       'req.headers.authorization',
+      'req.headers.x-test-admin-token',
       'req.headers.cookie',
       '*.password',
       '*.token',

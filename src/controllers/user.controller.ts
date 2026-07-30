@@ -1,7 +1,13 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as userService from '../services/user.service';
-import { WechatLoginDto, UpdateProfileDto } from '../validators/user.schema';
+import {
+  CreateTestAccountDto,
+  SwitchTestAccountDto,
+  UnlockTestAccountsDto,
+  UpdateProfileDto,
+  WechatLoginDto,
+} from '../validators/user.schema';
 
 export const wechatLogin = asyncHandler(async (req: Request, res: Response) => {
   const dto = req.body as WechatLoginDto;
@@ -24,5 +30,40 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
 
 export const deleteProfile = asyncHandler(async (req: Request, res: Response) => {
   const result = await userService.deleteProfile(req.userId!);
+  res.json({ code: 0, message: 'ok', data: result });
+});
+
+export const unlockTestAccounts = asyncHandler(async (req: Request, res: Response) => {
+  const result = await userService.unlockTestAccounts(
+    req.userId!,
+    (req.body as UnlockTestAccountsDto).password,
+  );
+  res.json({ code: 0, message: 'ok', data: result });
+});
+
+export const createTestAccount = asyncHandler(async (req: Request, res: Response) => {
+  const result = await userService.createTestAccount(
+    req.userId!,
+    req.header('x-test-admin-token') ?? '',
+    req.body as CreateTestAccountDto,
+  );
+  res.status(201).json({ code: 0, message: 'ok', data: result });
+});
+
+export const switchTestAccount = asyncHandler(async (req: Request, res: Response) => {
+  const result = await userService.switchTestAccount(
+    req.userId!,
+    req.header('x-test-admin-token') ?? '',
+    (req.body as SwitchTestAccountDto).accountId,
+  );
+  res.json({ code: 0, message: 'ok', data: result });
+});
+
+export const deleteTestAccount = asyncHandler(async (req: Request, res: Response) => {
+  const result = await userService.deleteTestAccount(
+    req.userId!,
+    req.header('x-test-admin-token') ?? '',
+    req.params.accountId,
+  );
   res.json({ code: 0, message: 'ok', data: result });
 });

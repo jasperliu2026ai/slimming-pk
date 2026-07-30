@@ -16,3 +16,23 @@ export const updateProfileSchema = z.object({
   targetWeightKg: z.number().min(20).max(300).optional(),
 });
 export type UpdateProfileDto = z.infer<typeof updateProfileSchema>;
+
+export const unlockTestAccountsSchema = z.object({
+  password: z.string().min(1).max(100),
+});
+
+export const createTestAccountSchema = z.object({
+  nickname: z.string().trim().min(1, '请输入测试账号昵称').max(32),
+});
+
+export const switchTestAccountSchema = z.object({
+  accountId: z.string().min(1),
+});
+
+export const testAccountParamsSchema = z.object({
+  accountId: z.string().min(1),
+});
+
+export type UnlockTestAccountsDto = z.infer<typeof unlockTestAccountsSchema>;
+export type CreateTestAccountDto = z.infer<typeof createTestAccountSchema>;
+export type SwitchTestAccountDto = z.infer<typeof switchTestAccountSchema>;

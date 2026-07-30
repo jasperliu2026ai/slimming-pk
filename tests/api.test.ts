@@ -44,6 +44,65 @@ describe('MVP API flow', () => {
     expect(response.body.data.avatarUrl).toBe(avatarUrl);
   });
 
+  it('creates, switches and permanently deletes a password-protected test account', async () => {
+    const denied = await request(app)
+      .post('/api/v1/users/test-accounts/unlock')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'wrong-password' });
+    expect(denied.status).toBe(403);
+
+    const unlocked = await request(app)
+      .post('/api/v1/users/test-accounts/unlock')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ password: 'liujun110' });
+    expect(unlocked.status).toBe(200);
+    expect(unlocked.body.data.accounts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: userId, isPrimary: true, isCurrent: true }),
+      ]),
+    );
+    const adminToken = unlocked.body.data.adminToken;
+
+    const created = await request(app)
+      .post('/api/v1/users/test-accounts')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-test-admin-token', adminToken)
+      .send({ nickname: '测试小号' });
+    expect(created.status).toBe(201);
+    expect(created.body.data.user.nickname).toBe('测试小号');
+    expect(created.body.data.user.isTestAccount).toBe(true);
+    const testAccountId = created.body.data.user.id;
+    const testAccountToken = created.body.data.token;
+
+    const switchedBack = await request(app)
+      .post('/api/v1/users/test-accounts/switch')
+      .set('Authorization', `Bearer ${testAccountToken}`)
+      .set('x-test-admin-token', adminToken)
+      .send({ accountId: userId });
+    expect(switchedBack.status).toBe(200);
+    expect(switchedBack.body.data.user.id).toBe(userId);
+
+    const cannotDeletePrimary = await request(app)
+      .delete(`/api/v1/users/test-accounts/${userId}`)
+      .set('Authorization', `Bearer ${testAccountToken}`)
+      .set('x-test-admin-token', adminToken);
+    expect(cannotDeletePrimary.status).toBe(403);
+
+    const deleted = await request(app)
+      .delete(`/api/v1/users/test-accounts/${testAccountId}`)
+      .set('Authorization', `Bearer ${testAccountToken}`)
+      .set('x-test-admin-token', adminToken);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.data.deleted).toBe(true);
+    expect(deleted.body.data.fallbackAuth.user.id).toBe(userId);
+    token = deleted.body.data.fallbackAuth.token;
+
+    const removed = await request(app)
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${testAccountToken}`);
+    expect(removed.status).toBe(404);
+  });
+
   it('creates a room and automatically joins the creator', async () => {
     const created = await request(app)
       .post('/api/v1/rooms')

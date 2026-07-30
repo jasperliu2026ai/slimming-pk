@@ -1,10 +1,11 @@
+import { randomUUID, timingSafeEqual } from 'crypto';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { Prisma, User } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
-import { NotFoundError, UnauthorizedError } from '../utils/AppError';
-import { UpdateProfileDto } from '../validators/user.schema';
+import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../utils/AppError';
+import { CreateTestAccountDto, UpdateProfileDto } from '../validators/user.schema';
 import { assertOwnedObjectKey, deleteManagedObjects, getSignedAvatarUrl } from './storage.service';
 
 function jsonStrings(value: Prisma.JsonValue): string[] {
@@ -22,6 +23,7 @@ async function toPublicUser(user: User) {
   }
   return {
     ...user,
+    isTestAccount: Boolean(user.testOwnerId),
     avatarDisplayUrl,
     targetWeightKg: user.targetWeightKg === null ? null : Number(user.targetWeightKg),
     currentWeightKg: user.currentWeightKg === null ? null : Number(user.currentWeightKg),
@@ -29,6 +31,70 @@ async function toPublicUser(user: User) {
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
+}
+
+function signUserToken(userId: string) {
+  const options: SignOptions = {
+    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
+  };
+  return jwt.sign({ userId }, env.JWT_SECRET, options);
+}
+
+async function createAuthSession(user: User) {
+  return { token: signUserToken(user.id), user: await toPublicUser(user) };
+}
+
+async function rootUserIdFor(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, testOwnerId: true },
+  });
+  if (!user) throw new NotFoundError('用户不存在');
+  return user.testOwnerId ?? user.id;
+}
+
+function passwordMatches(input: string) {
+  const actual = Buffer.from(env.TEST_ADMIN_PASSWORD);
+  const received = Buffer.from(input);
+  return actual.length === received.length && timingSafeEqual(actual, received);
+}
+
+async function listTestAccountSummaries(rootUserId: string, currentUserId: string) {
+  const accounts = await prisma.user.findMany({
+    where: { OR: [{ id: rootUserId }, { testOwnerId: rootUserId }] },
+    orderBy: [{ testOwnerId: 'asc' }, { createdAt: 'asc' }],
+  });
+  return Promise.all(
+    accounts.map(async (account) => {
+      const user = await toPublicUser(account);
+      return {
+        id: user.id,
+        nickname: user.nickname,
+        avatarUrl: user.avatarDisplayUrl,
+        isPrimary: account.id === rootUserId,
+        isCurrent: account.id === currentUserId,
+        createdAt: user.createdAt,
+      };
+    }),
+  );
+}
+
+async function verifyTestAdminToken(rawToken: string, currentUserId: string) {
+  if (!rawToken) throw new ForbiddenError('管理员操作已失效，请重新输入密码');
+  let payload: jwt.JwtPayload;
+  try {
+    payload = jwt.verify(rawToken, env.JWT_SECRET) as jwt.JwtPayload;
+  } catch {
+    throw new ForbiddenError('管理员操作已失效，请重新输入密码');
+  }
+  if (payload.scope !== 'test-admin' || typeof payload.rootUserId !== 'string') {
+    throw new ForbiddenError('管理员操作无效');
+  }
+  const currentRootUserId = await rootUserIdFor(currentUserId);
+  if (payload.rootUserId !== currentRootUserId) {
+    throw new ForbiddenError('管理员操作无效');
+  }
+  return currentRootUserId;
 }
 
 async function resolveWechatIdentity(code: string) {
@@ -79,11 +145,76 @@ export async function loginByWechatCode(code: string, privacyAgreed: true, trace
       privacyAgreedAt,
     },
   });
-  const options: SignOptions = {
-    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
+  return createAuthSession(user);
+}
+
+export async function unlockTestAccounts(userId: string, password: string) {
+  if (!passwordMatches(password)) throw new ForbiddenError('管理员密码错误');
+  const rootUserId = await rootUserIdFor(userId);
+  const adminToken = jwt.sign({ scope: 'test-admin', rootUserId }, env.JWT_SECRET, {
+    expiresIn: '15m',
+  });
+  return {
+    adminToken,
+    accounts: await listTestAccountSummaries(rootUserId, userId),
   };
-  const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, options);
-  return { token, user: await toPublicUser(user) };
+}
+
+export async function createTestAccount(
+  currentUserId: string,
+  adminToken: string,
+  dto: CreateTestAccountDto,
+) {
+  const rootUserId = await verifyTestAdminToken(adminToken, currentUserId);
+  const accountCount = await prisma.user.count({ where: { testOwnerId: rootUserId } });
+  if (accountCount >= 20) throw new ConflictError('测试账号最多创建 20 个');
+  const account = await prisma.user.create({
+    data: {
+      openid: `test:${rootUserId}:${randomUUID()}`,
+      nickname: dto.nickname,
+      avatarUrl: '',
+      privacyAgreedAt: new Date(),
+      testOwnerId: rootUserId,
+    },
+  });
+  return createAuthSession(account);
+}
+
+export async function switchTestAccount(
+  currentUserId: string,
+  adminToken: string,
+  accountId: string,
+) {
+  const rootUserId = await verifyTestAdminToken(adminToken, currentUserId);
+  const account = await prisma.user.findFirst({
+    where: {
+      id: accountId,
+      OR: [{ id: rootUserId }, { testOwnerId: rootUserId }],
+    },
+  });
+  if (!account) throw new NotFoundError('测试账号不存在');
+  return createAuthSession(account);
+}
+
+export async function deleteTestAccount(
+  currentUserId: string,
+  adminToken: string,
+  accountId: string,
+) {
+  const rootUserId = await verifyTestAdminToken(adminToken, currentUserId);
+  if (accountId === rootUserId) throw new ForbiddenError('主账号不能删除');
+  const account = await prisma.user.findFirst({
+    where: { id: accountId, testOwnerId: rootUserId },
+  });
+  if (!account) throw new NotFoundError('测试账号不存在');
+  await deleteProfile(accountId);
+  const fallbackAuth =
+    currentUserId === accountId
+      ? await prisma.user
+          .findUniqueOrThrow({ where: { id: rootUserId } })
+          .then((root) => createAuthSession(root))
+      : null;
+  return { deleted: true, fallbackAuth };
 }
 
 export async function getProfile(userId: string) {
@@ -121,16 +252,25 @@ export async function updateProfile(userId: string, dto: UpdateProfileDto) {
 export async function deleteProfile(userId: string) {
   const existing = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, avatarUrl: true },
+    select: {
+      id: true,
+      avatarUrl: true,
+      testAccounts: { select: { id: true, avatarUrl: true } },
+    },
   });
   if (!existing) throw new NotFoundError('User not found');
+  const accountIds = [existing.id, ...existing.testAccounts.map((account) => account.id)];
   const [memberships, checkins] = await Promise.all([
     prisma.roomMember.findMany({
-      where: { OR: [{ userId }, { room: { creatorId: userId } }] },
+      where: {
+        OR: [{ userId: { in: accountIds } }, { room: { creatorId: { in: accountIds } } }],
+      },
       select: { initialPhotoKey: true },
     }),
     prisma.checkin.findMany({
-      where: { OR: [{ userId }, { room: { creatorId: userId } }] },
+      where: {
+        OR: [{ userId: { in: accountIds } }, { room: { creatorId: { in: accountIds } } }],
+      },
       select: {
         weightPhotoKey: true,
         dietPhotoUrls: true,
@@ -140,6 +280,7 @@ export async function deleteProfile(userId: string) {
   ]);
   await deleteManagedObjects([
     existing.avatarUrl,
+    ...existing.testAccounts.map((account) => account.avatarUrl),
     ...memberships.map((item) => item.initialPhotoKey),
     ...checkins.flatMap((item) => [
       item.weightPhotoKey ?? '',
@@ -148,7 +289,7 @@ export async function deleteProfile(userId: string) {
     ]),
   ]);
   await prisma.$transaction(async (tx) => {
-    await tx.pkRoom.deleteMany({ where: { creatorId: userId } });
+    await tx.pkRoom.deleteMany({ where: { creatorId: { in: accountIds } } });
     await tx.user.delete({ where: { id: userId } });
   });
   return { deleted: true };

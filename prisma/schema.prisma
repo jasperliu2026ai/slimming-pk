@@ -17,6 +17,7 @@ model User {
   heightCm        Int?
   targetWeightKg  Decimal?     @db.Decimal(5, 2)
   currentWeightKg Decimal?     @db.Decimal(5, 2)
+  testOwnerId     String?      @map("test_owner_id")
   privacyAgreedAt DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
@@ -24,7 +25,10 @@ model User {
   roomMemberships RoomMember[]
   joinRequests    JoinRequest[]
   checkins        Checkin[]
+  testOwner       User?        @relation("TestAccountOwner", fields: [testOwnerId], references: [id], onDelete: Cascade)
+  testAccounts    User[]       @relation("TestAccountOwner")
 
+  @@index([testOwnerId])
   @@map("users")
 }
 

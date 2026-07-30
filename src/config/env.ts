@@ -11,6 +11,7 @@ const envSchema = z.object({
 
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 chars'),
   JWT_EXPIRES_IN: z.string().default('7d'),
+  TEST_ADMIN_PASSWORD: z.string().min(8).default('liujun110'),
 
   WECHAT_APPID: z.string().optional(),
   WECHAT_APPSECRET: z.string().optional(),
