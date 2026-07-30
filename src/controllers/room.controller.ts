@@ -1,12 +1,18 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as roomService from '../services/room.service';
-import { CreateRoomDto, DecideJoinRequestDto, JoinRoomDto } from '../validators/room.schema';
+import { getRoomMiniProgramCode } from '../services/wechat.service';
+import {
+  CreateRoomDto,
+  DecideJoinRequestDto,
+  DecideRestartInvitationDto,
+  JoinRoomDto,
+} from '../validators/room.schema';
 
 const ok = (res: Response, data: unknown) => res.json({ code: 0, message: 'ok', data });
 
 export const listRooms = asyncHandler(async (req: Request, res: Response) => {
-  const list = await roomService.listRooms(req.userId!);
+  const list = await roomService.listRooms(req.userId!, req.query.archived === 'true');
   ok(res, { list, total: list.length, page: 1, pageSize: 20, hasMore: false });
 });
 
@@ -62,4 +68,44 @@ export const getLeaderboard = asyncHandler(async (req: Request, res: Response) =
 
 export const getSettlement = asyncHandler(async (req: Request, res: Response) => {
   ok(res, await roomService.getSettlement(req.params.roomId, req.userId!));
+});
+
+export const endRoom = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await roomService.endRoom(req.params.roomId, req.userId!));
+});
+
+export const archiveRoom = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await roomService.archiveRoom(req.params.roomId, req.userId!));
+});
+
+export const restoreRoom = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await roomService.restoreRoom(req.params.roomId, req.userId!));
+});
+
+export const restartRoom = asyncHandler(async (req: Request, res: Response) => {
+  res.status(201).json({
+    code: 0,
+    message: 'ok',
+    data: await roomService.restartRoom(req.params.roomId, req.userId!, req.body as CreateRoomDto),
+  });
+});
+
+export const listRestartInvitations = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, { list: await roomService.listRestartInvitations(req.userId!) });
+});
+
+export const decideRestartInvitation = asyncHandler(async (req: Request, res: Response) => {
+  ok(
+    res,
+    await roomService.decideRestartInvitation(
+      req.params.invitationId,
+      req.userId!,
+      (req.body as DecideRestartInvitationDto).action,
+    ),
+  );
+});
+
+export const getShareCode = asyncHandler(async (req: Request, res: Response) => {
+  await roomService.getRoom(req.params.roomId, req.userId!);
+  ok(res, await getRoomMiniProgramCode(req.params.roomId));
 });

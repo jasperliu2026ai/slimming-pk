@@ -36,6 +36,15 @@ export const decideJoinRequestSchema = z.object({
   action: z.enum(['approve', 'reject']),
 });
 
+export const decideRestartInvitationSchema = z.object({
+  action: z.enum(['accept', 'decline']),
+});
+
+export const restartInvitationParamsSchema = z.object({
+  invitationId: z.string().min(1),
+});
+
 export type CreateRoomDto = z.infer<typeof createRoomSchema>;
 export type JoinRoomDto = z.infer<typeof joinRoomSchema>;
 export type DecideJoinRequestDto = z.infer<typeof decideJoinRequestSchema>;
+export type DecideRestartInvitationDto = z.infer<typeof decideRestartInvitationSchema>;

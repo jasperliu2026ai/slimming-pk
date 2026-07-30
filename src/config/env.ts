@@ -15,6 +15,7 @@ const envSchema = z.object({
 
   WECHAT_APPID: z.string().optional(),
   WECHAT_APPSECRET: z.string().optional(),
+  WECHAT_MINI_PROGRAM_ENV_VERSION: z.enum(['develop', 'trial', 'release']).default('trial'),
   WECHAT_MCH_ID: z.string().optional(),
   WECHAT_PAY_API_V3_KEY: z.string().optional(),
 

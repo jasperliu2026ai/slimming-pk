@@ -385,4 +385,85 @@ describe('MVP API flow', () => {
       });
     expect(blocked.status).toBe(409);
   });
+
+  it('ends, archives, restores and restarts a PK with invitations for former members', async () => {
+    const ended = await request(app)
+      .post(`/api/v1/rooms/${roomId}/end`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(ended.status).toBe(200);
+    expect(ended.body.data.status).toBe('ended');
+
+    const archived = await request(app)
+      .post(`/api/v1/rooms/${roomId}/archive`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(archived.status).toBe(200);
+
+    const normalList = await request(app)
+      .get('/api/v1/rooms')
+      .set('Authorization', `Bearer ${token}`);
+    expect(normalList.body.data.list.some((item: { id: string }) => item.id === roomId)).toBe(
+      false,
+    );
+
+    const archivedList = await request(app)
+      .get('/api/v1/rooms?archived=true')
+      .set('Authorization', `Bearer ${token}`);
+    expect(archivedList.body.data.list).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: roomId, isArchived: true })]),
+    );
+
+    const restored = await request(app)
+      .post(`/api/v1/rooms/${roomId}/restore`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(restored.status).toBe(200);
+
+    const formerMemberToken = jwt.sign(
+      { userId: 'join-request-applicant' },
+      process.env.JWT_SECRET!,
+    );
+    const restarted = await request(app)
+      .post(`/api/v1/rooms/${roomId}/restart`)
+      .set('Authorization', `Bearer ${formerMemberToken}`)
+      .send({
+        name: '重新出发 PK',
+        durationDays: 14,
+        maxMembers: 8,
+        startDate: shanghaiDateString(),
+        initialWeightKg: 65.8,
+      });
+    expect(restarted.status).toBe(201);
+    expect(restarted.body.data.room.isCreator).toBe(true);
+    expect(restarted.body.data.room.memberCount).toBe(1);
+    expect(restarted.body.data.invitedCount).toBeGreaterThan(0);
+
+    const invitations = await request(app)
+      .get('/api/v1/rooms/restart-invitations')
+      .set('Authorization', `Bearer ${token}`);
+    expect(invitations.status).toBe(200);
+    expect(invitations.body.data.list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          roomId: restarted.body.data.room.id,
+          roomName: '重新出发 PK',
+        }),
+      ]),
+    );
+    const invitation = invitations.body.data.list.find(
+      (item: { roomId: string }) => item.roomId === restarted.body.data.room.id,
+    );
+
+    const accepted = await request(app)
+      .put(`/api/v1/rooms/restart-invitations/${invitation.id}`)
+      .set('X-HTTP-Method-Override', 'PATCH')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ action: 'accept' });
+    expect(accepted.status).toBe(200);
+    expect(accepted.body.data.status).toBe('accepted');
+
+    const restartedRoom = await request(app)
+      .get(`/api/v1/rooms/${restarted.body.data.room.id}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(restartedRoom.body.data.isMember).toBe(true);
+    expect(restartedRoom.body.data.memberCount).toBe(2);
+  });
 });

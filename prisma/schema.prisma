@@ -8,49 +8,56 @@ datasource db {
 }
 
 model User {
-  id              String       @id @default(cuid())
-  openid          String       @unique @db.VarChar(128)
-  unionid         String?      @unique @db.VarChar(128)
-  nickname        String       @default("") @db.VarChar(32)
-  avatarUrl       String       @default("") @db.VarChar(500)
-  gender          Gender       @default(unknown)
-  heightCm        Int?
-  targetWeightKg  Decimal?     @db.Decimal(5, 2)
-  currentWeightKg Decimal?     @db.Decimal(5, 2)
-  testOwnerId     String?      @map("test_owner_id")
-  privacyAgreedAt DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  createdRooms    PkRoom[]     @relation("RoomCreator")
-  roomMemberships RoomMember[]
-  joinRequests    JoinRequest[]
-  checkins        Checkin[]
-  testOwner       User?        @relation("TestAccountOwner", fields: [testOwnerId], references: [id], onDelete: Cascade)
-  testAccounts    User[]       @relation("TestAccountOwner")
+  id                         String              @id @default(cuid())
+  openid                     String              @unique @db.VarChar(128)
+  unionid                    String?             @unique @db.VarChar(128)
+  nickname                   String              @default("") @db.VarChar(32)
+  avatarUrl                  String              @default("") @db.VarChar(500)
+  gender                     Gender              @default(unknown)
+  heightCm                   Int?
+  targetWeightKg             Decimal?            @db.Decimal(5, 2)
+  currentWeightKg            Decimal?            @db.Decimal(5, 2)
+  testOwnerId                String?             @map("test_owner_id")
+  privacyAgreedAt            DateTime?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  createdRooms               PkRoom[]            @relation("RoomCreator")
+  roomMemberships            RoomMember[]
+  joinRequests               JoinRequest[]
+  checkins                   Checkin[]
+  sentRestartInvitations     RestartInvitation[] @relation("RestartInviter")
+  receivedRestartInvitations RestartInvitation[] @relation("RestartInvitee")
+  testOwner                  User?               @relation("TestAccountOwner", fields: [testOwnerId], references: [id], onDelete: Cascade)
+  testAccounts               User[]              @relation("TestAccountOwner")
 
   @@index([testOwnerId])
   @@map("users")
 }
 
 model PkRoom {
-  id           String       @id @default(cuid())
-  inviteCode   String       @unique @db.VarChar(12)
-  name         String       @db.VarChar(20)
-  status       RoomStatus   @default(pending)
-  startDate    DateTime     @db.Date
-  endDate      DateTime     @db.Date
-  durationDays Int
-  maxMembers   Int          @default(5)
-  creatorId    String
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  creator      User         @relation("RoomCreator", fields: [creatorId], references: [id], onDelete: Restrict)
-  members      RoomMember[]
-  joinRequests JoinRequest[]
-  checkins     Checkin[]
+  id                 String              @id @default(cuid())
+  inviteCode         String              @unique @db.VarChar(12)
+  name               String              @db.VarChar(20)
+  status             RoomStatus          @default(pending)
+  startDate          DateTime            @db.Date
+  endDate            DateTime            @db.Date
+  durationDays       Int
+  maxMembers         Int                 @default(5)
+  creatorId          String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  creator            User                @relation("RoomCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  members            RoomMember[]
+  joinRequests       JoinRequest[]
+  checkins           Checkin[]
+  sourceRoomId       String?
+  sourceRoom         PkRoom?             @relation("RoomRestart", fields: [sourceRoomId], references: [id], onDelete: SetNull)
+  restartedRooms     PkRoom[]            @relation("RoomRestart")
+  restartInvitations RestartInvitation[]
 
   @@index([creatorId, createdAt])
   @@index([status, startDate])
+  @@index([sourceRoomId])
   @@map("pk_rooms")
 }
 
@@ -61,6 +68,7 @@ model RoomMember {
   initialPhotoKey String       @map("initialPhotoUrl") @db.VarChar(500)
   currentWeightKg Decimal      @db.Decimal(5, 2)
   joinedAt        DateTime     @default(now())
+  archivedAt      DateTime?
   status          MemberStatus @default(active)
   room            PkRoom       @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -70,18 +78,36 @@ model RoomMember {
   @@map("room_members")
 }
 
+model RestartInvitation {
+  id        String                  @id @default(cuid())
+  roomId    String
+  inviterId String
+  inviteeId String
+  status    RestartInvitationStatus @default(pending)
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+  decidedAt DateTime?
+  room      PkRoom                  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  inviter   User                    @relation("RestartInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee   User                    @relation("RestartInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, inviteeId])
+  @@index([inviteeId, status, createdAt])
+  @@map("restart_invitations")
+}
+
 model JoinRequest {
-  id               String            @id @default(cuid())
-  roomId           String
-  userId           String
-  initialWeightKg  Decimal           @db.Decimal(5, 2)
-  initialPhotoKey  String            @map("initialPhotoUrl") @db.VarChar(500)
-  status           JoinRequestStatus @default(pending)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  decidedAt        DateTime?
-  room             PkRoom            @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String            @id @default(cuid())
+  roomId          String
+  userId          String
+  initialWeightKg Decimal           @db.Decimal(5, 2)
+  initialPhotoKey String            @map("initialPhotoUrl") @db.VarChar(500)
+  status          JoinRequestStatus @default(pending)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  decidedAt       DateTime?
+  room            PkRoom            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, userId])
   @@index([roomId, status, createdAt])
@@ -148,6 +174,12 @@ enum JoinRequestStatus {
   pending
   approved
   rejected
+}
+
+enum RestartInvitationStatus {
+  pending
+  accepted
+  declined
 }
 
 enum BizType {

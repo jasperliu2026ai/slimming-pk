@@ -1,4 +1,11 @@
-import { JoinRequestStatus, MemberStatus, Prisma, PrismaClient, RoomStatus } from '@prisma/client';
+import {
+  JoinRequestStatus,
+  MemberStatus,
+  Prisma,
+  PrismaClient,
+  RestartInvitationStatus,
+  RoomStatus,
+} from '@prisma/client';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/AppError';
@@ -116,6 +123,7 @@ async function toPublicRoom(client: DbClient, room: RoomWithMembers, userId: str
     memberCount: room.members.length,
     isMember: Boolean(myProgress),
     isCreator,
+    isArchived: Boolean(myMembership?.archivedAt),
     isFull,
     canApply:
       !myProgress &&
@@ -140,26 +148,38 @@ async function findRoomOrThrow(client: DbClient, roomId: string) {
   return room;
 }
 
-export async function listRooms(userId: string) {
+export async function listRooms(userId: string, archived = false) {
   const rooms = await prisma.pkRoom.findMany({
     where: {
-      OR: [
-        { creatorId: userId },
-        { members: { some: { userId, status: MemberStatus.active } } },
-        { status: { in: [RoomStatus.pending, RoomStatus.active] } },
-      ],
+      ...(archived
+        ? {
+            members: {
+              some: { userId, status: MemberStatus.active, archivedAt: { not: null } },
+            },
+          }
+        : {
+            OR: [
+              { creatorId: userId },
+              {
+                members: {
+                  some: { userId, status: MemberStatus.active, archivedAt: null },
+                },
+              },
+              { status: { in: [RoomStatus.pending, RoomStatus.active] } },
+            ],
+          }),
     },
     include: roomInclude,
     orderBy: { createdAt: 'desc' },
   });
   const publicRooms = await Promise.all(rooms.map((room) => toPublicRoom(prisma, room, userId)));
-  return publicRooms.filter(
-    (room) =>
-      room.isMember ||
-      room.isCreator ||
-      room.status === RoomStatus.pending ||
-      room.status === RoomStatus.active,
-  );
+  return publicRooms.filter((room) => {
+    if (archived) return room.isMember && room.isArchived;
+    return (
+      (room.isMember && !room.isArchived) ||
+      (!room.isMember && (room.status === RoomStatus.pending || room.status === RoomStatus.active))
+    );
+  });
 }
 
 export async function getRoom(roomId: string, userId: string) {
@@ -414,4 +434,203 @@ export async function getSettlement(roomId: string, userId: string) {
     totalMembers: ranking.length,
     winners: ranking.slice(0, 3),
   };
+}
+
+export async function endRoom(roomId: string, userId: string) {
+  const room = await findRoomOrThrow(prisma, roomId);
+  if (room.creatorId !== userId) throw new ForbiddenError('只有 PK 创建者可以提前结束');
+  if (effectiveRoomStatus(room) !== RoomStatus.active) {
+    throw new ConflictError('只有进行中的 PK 可以提前结束');
+  }
+  await prisma.pkRoom.update({
+    where: { id: roomId },
+    data: { status: RoomStatus.ended, endDate: dateOnly(shanghaiDateString()) },
+  });
+  return toPublicRoom(prisma, await findRoomOrThrow(prisma, roomId), userId);
+}
+
+export async function archiveRoom(roomId: string, userId: string) {
+  const room = await findRoomOrThrow(prisma, roomId);
+  if (effectiveRoomStatus(room) !== RoomStatus.ended) {
+    throw new ConflictError('只有已结束的 PK 可以归档');
+  }
+  const membership = room.members.find((item) => item.userId === userId);
+  if (!membership) throw new ForbiddenError('只有参与成员可以归档该 PK');
+  await prisma.roomMember.update({
+    where: { roomId_userId: { roomId, userId } },
+    data: { archivedAt: new Date() },
+  });
+  return { roomId, archived: true };
+}
+
+export async function restoreRoom(roomId: string, userId: string) {
+  const membership = await prisma.roomMember.findUnique({
+    where: { roomId_userId: { roomId, userId } },
+    select: { archivedAt: true },
+  });
+  if (!membership) throw new ForbiddenError('你不是该 PK 的参与成员');
+  if (!membership.archivedAt) throw new ConflictError('该 PK 尚未归档');
+  await prisma.roomMember.update({
+    where: { roomId_userId: { roomId, userId } },
+    data: { archivedAt: null },
+  });
+  return { roomId, archived: false };
+}
+
+export async function restartRoom(sourceRoomId: string, userId: string, dto: CreateRoomDto) {
+  assertOwnedObjectKey(dto.initialPhotoUrl, userId);
+  const inviteCode = await createInviteCode();
+  return prisma.$transaction(
+    async (tx) => {
+      const sourceRoom = await findRoomOrThrow(tx, sourceRoomId);
+      if (effectiveRoomStatus(sourceRoom) !== RoomStatus.ended) {
+        throw new ConflictError('只有已结束的 PK 可以再次发起');
+      }
+      const sourceMember = sourceRoom.members.find((item) => item.userId === userId);
+      if (!sourceMember) throw new ForbiddenError('只有原 PK 成员可以再次发起');
+
+      const room = await tx.pkRoom.create({
+        data: {
+          inviteCode,
+          name: dto.name,
+          status: dto.startDate <= shanghaiDateString() ? RoomStatus.active : RoomStatus.pending,
+          startDate: dateOnly(dto.startDate),
+          endDate: addDays(dto.startDate, dto.durationDays),
+          durationDays: dto.durationDays,
+          maxMembers: dto.maxMembers,
+          creatorId: userId,
+          sourceRoomId,
+        },
+      });
+      const weight = new Prisma.Decimal(dto.initialWeightKg);
+      await Promise.all([
+        tx.roomMember.create({
+          data: {
+            roomId: room.id,
+            userId,
+            initialWeightKg: weight,
+            currentWeightKg: weight,
+            initialPhotoKey: dto.initialPhotoUrl,
+          },
+        }),
+        tx.user.update({
+          where: { id: userId },
+          data: { currentWeightKg: weight },
+        }),
+      ]);
+      const inviteeIds = sourceRoom.members
+        .map((member) => member.userId)
+        .filter((memberId) => memberId !== userId);
+      if (inviteeIds.length > 0) {
+        await tx.restartInvitation.createMany({
+          data: inviteeIds.map((inviteeId) => ({
+            roomId: room.id,
+            inviterId: userId,
+            inviteeId,
+          })),
+        });
+      }
+      return {
+        room: await toPublicRoom(tx, await findRoomOrThrow(tx, room.id), userId),
+        invitedCount: inviteeIds.length,
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
+export async function listRestartInvitations(userId: string) {
+  const invitations = await prisma.restartInvitation.findMany({
+    where: { inviteeId: userId, status: RestartInvitationStatus.pending },
+    include: {
+      inviter: { select: { nickname: true } },
+      room: {
+        select: {
+          id: true,
+          name: true,
+          inviteCode: true,
+          startDate: true,
+          durationDays: true,
+          maxMembers: true,
+          sourceRoom: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  return invitations.map((invitation) => ({
+    id: invitation.id,
+    roomId: invitation.roomId,
+    roomName: invitation.room.name,
+    sourceRoomName: invitation.room.sourceRoom?.name ?? '',
+    inviteCode: invitation.room.inviteCode,
+    inviterNickname: invitation.inviter.nickname,
+    startDate: dateString(invitation.room.startDate),
+    durationDays: invitation.room.durationDays,
+    maxMembers: invitation.room.maxMembers,
+    status: invitation.status,
+    createdAt: invitation.createdAt.toISOString(),
+  }));
+}
+
+export async function decideRestartInvitation(
+  invitationId: string,
+  userId: string,
+  action: 'accept' | 'decline',
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      const invitation = await tx.restartInvitation.findFirst({
+        where: { id: invitationId, inviteeId: userId },
+        include: { room: { include: roomInclude } },
+      });
+      if (!invitation) throw new NotFoundError('重来 PK 邀请不存在');
+      if (invitation.status !== RestartInvitationStatus.pending) {
+        throw new ConflictError('该邀请已经处理');
+      }
+      if (action === 'decline') {
+        await tx.restartInvitation.update({
+          where: { id: invitationId },
+          data: { status: RestartInvitationStatus.declined, decidedAt: new Date() },
+        });
+        return { invitationId, roomId: invitation.roomId, status: 'declined' as const };
+      }
+      const roomStatus = effectiveRoomStatus(invitation.room);
+      if (roomStatus === RoomStatus.ended || roomStatus === RoomStatus.dissolved) {
+        throw new ConflictError('这局 PK 已无法加入');
+      }
+      if (invitation.room.members.length >= invitation.room.maxMembers) {
+        throw new ConflictError('这局 PK 人数已满');
+      }
+      if (invitation.room.members.some((member) => member.userId === userId)) {
+        throw new ConflictError('你已经加入这局 PK');
+      }
+      if (!invitation.room.sourceRoomId) throw new ConflictError('原 PK 信息不存在');
+      const sourceMembership = await tx.roomMember.findUnique({
+        where: { roomId_userId: { roomId: invitation.room.sourceRoomId, userId } },
+      });
+      if (!sourceMembership) throw new ForbiddenError('你不是原 PK 成员');
+      await Promise.all([
+        tx.roomMember.create({
+          data: {
+            roomId: invitation.roomId,
+            userId,
+            initialWeightKg: sourceMembership.currentWeightKg,
+            currentWeightKg: sourceMembership.currentWeightKg,
+            initialPhotoKey: '',
+          },
+        }),
+        tx.user.update({
+          where: { id: userId },
+          data: { currentWeightKg: sourceMembership.currentWeightKg },
+        }),
+        tx.restartInvitation.update({
+          where: { id: invitationId },
+          data: { status: RestartInvitationStatus.accepted, decidedAt: new Date() },
+        }),
+      ]);
+      return { invitationId, roomId: invitation.roomId, status: 'accepted' as const };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
