@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import * as roomService from '../services/room.service';
-import { CreateRoomDto, JoinRoomDto } from '../validators/room.schema';
+import { CreateRoomDto, DecideJoinRequestDto, JoinRoomDto } from '../validators/room.schema';
 
 const ok = (res: Response, data: unknown) => res.json({ code: 0, message: 'ok', data });
 
@@ -26,8 +26,32 @@ export const createRoom = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-export const joinRoom = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, await roomService.joinRoom(req.params.roomId, req.userId!, req.body as JoinRoomDto));
+export const createJoinRequest = asyncHandler(async (req: Request, res: Response) => {
+  res.status(201).json({
+    code: 0,
+    message: 'ok',
+    data: await roomService.createJoinRequest(
+      req.params.roomId,
+      req.userId!,
+      req.body as JoinRoomDto,
+    ),
+  });
+});
+
+export const listJoinRequests = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await roomService.listJoinRequests(req.params.roomId, req.userId!));
+});
+
+export const decideJoinRequest = asyncHandler(async (req: Request, res: Response) => {
+  ok(
+    res,
+    await roomService.decideJoinRequest(
+      req.params.roomId,
+      req.params.requestId,
+      req.userId!,
+      (req.body as DecideJoinRequestDto).action,
+    ),
+  );
 });
 
 export const getLeaderboard = asyncHandler(async (req: Request, res: Response) => {

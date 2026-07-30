@@ -8,6 +8,7 @@ process.env.COS_SECRET_ID = '';
 process.env.COS_SECRET_KEY = '';
 
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { createApp } from '../src/app';
 import { prisma } from '../src/config/database';
 import { shanghaiDateString } from '../src/utils/date';
@@ -62,6 +63,70 @@ describe('MVP API flow', () => {
     expect(created.body.data.myCurrentWeightKg).toBe(63.2);
   });
 
+  it('requires creator approval before an applicant becomes a member', async () => {
+    const applicantId = 'join-request-applicant';
+    await prisma.user.upsert({
+      where: { id: applicantId },
+      update: {},
+      create: {
+        id: applicantId,
+        openid: 'join-request-applicant-openid',
+        nickname: '申请加入者',
+      },
+    });
+    const applicantToken = jwt.sign({ userId: applicantId }, process.env.JWT_SECRET!);
+
+    const discoverable = await request(app)
+      .get('/api/v1/rooms')
+      .set('Authorization', `Bearer ${applicantToken}`);
+    const availableRoom = discoverable.body.data.list.find(
+      (item: { id: string }) => item.id === roomId,
+    );
+    expect(availableRoom.isMember).toBe(false);
+    expect(availableRoom.canApply).toBe(true);
+
+    const applied = await request(app)
+      .post(`/api/v1/rooms/${roomId}/join-requests`)
+      .set('Authorization', `Bearer ${applicantToken}`)
+      .send({
+        initialWeightKg: 66.5,
+        initialPhotoUrl: 'local://join-request',
+      });
+    expect(applied.status).toBe(201);
+    expect(applied.body.data.status).toBe('pending');
+
+    const waiting = await request(app)
+      .get('/api/v1/rooms')
+      .set('Authorization', `Bearer ${applicantToken}`);
+    const waitingRoom = waiting.body.data.list.find((item: { id: string }) => item.id === roomId);
+    expect(waitingRoom.myJoinRequestStatus).toBe('pending');
+    expect(waitingRoom.canApply).toBe(false);
+
+    const forbidden = await request(app)
+      .get(`/api/v1/rooms/${roomId}/join-requests`)
+      .set('Authorization', `Bearer ${applicantToken}`);
+    expect(forbidden.status).toBe(403);
+
+    const pending = await request(app)
+      .get(`/api/v1/rooms/${roomId}/join-requests`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(pending.status).toBe(200);
+    expect(pending.body.data.list).toHaveLength(1);
+
+    const approved = await request(app)
+      .patch(`/api/v1/rooms/${roomId}/join-requests/${applied.body.data.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ action: 'approve' });
+    expect(approved.status).toBe(200);
+    expect(approved.body.data.status).toBe('approved');
+
+    const joined = await request(app)
+      .get(`/api/v1/rooms/${roomId}`)
+      .set('Authorization', `Bearer ${applicantToken}`);
+    expect(joined.body.data.isMember).toBe(true);
+    expect(joined.body.data.myInitialWeightKg).toBe(66.5);
+  });
+
   it('protects the upload endpoint and reports missing COS credentials', async () => {
     const unauthorized = await request(app)
       .post('/api/v1/uploads/images')
@@ -89,7 +154,6 @@ describe('MVP API flow', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         weightKg: 62.9,
-        weightPhotoUrl: 'local://today',
         dietText: '少油',
         dietPhotoUrls: [],
         exercisePhotoUrls: [],
@@ -196,5 +260,70 @@ describe('MVP API flow', () => {
       .set('Authorization', `Bearer ${token}`);
     expect(room.body.data.myInitialWeightKg).toBe(63.2);
     expect(room.body.data.myCurrentWeightKg).toBe(62.8);
+  });
+
+  it('accepts custom challenge days and team capacity beyond the former presets', async () => {
+    const created = await request(app)
+      .post('/api/v1/rooms')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: '自定义配置 PK',
+        durationDays: 45,
+        maxMembers: 12,
+        startDate: shanghaiDateString(),
+        initialWeightKg: 63.2,
+        initialPhotoUrl: 'local://custom-room-initial',
+      });
+    expect(created.status).toBe(201);
+    expect(created.body.data.durationDays).toBe(45);
+    expect(created.body.data.maxMembers).toBe(12);
+  });
+
+  it('hides the join entrance and rejects new applications when the room is full', async () => {
+    const createApplicant = async (id: string, nickname: string) => {
+      await prisma.user.upsert({
+        where: { id },
+        update: {},
+        create: {
+          id,
+          openid: `${id}-openid`,
+          nickname,
+        },
+      });
+      return jwt.sign({ userId: id }, process.env.JWT_SECRET!);
+    };
+
+    const finalMemberToken = await createApplicant('final-capacity-member', '最后一位成员');
+    const finalApplication = await request(app)
+      .post(`/api/v1/rooms/${roomId}/join-requests`)
+      .set('Authorization', `Bearer ${finalMemberToken}`)
+      .send({
+        initialWeightKg: 58.8,
+        initialPhotoUrl: 'local://final-capacity-member',
+      });
+    expect(finalApplication.status).toBe(201);
+
+    const approval = await request(app)
+      .patch(`/api/v1/rooms/${roomId}/join-requests/${finalApplication.body.data.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ action: 'approve' });
+    expect(approval.status).toBe(200);
+
+    const overflowToken = await createApplicant('overflow-applicant', '满员后申请者');
+    const rooms = await request(app)
+      .get('/api/v1/rooms')
+      .set('Authorization', `Bearer ${overflowToken}`);
+    const fullRoom = rooms.body.data.list.find((item: { id: string }) => item.id === roomId);
+    expect(fullRoom.isFull).toBe(true);
+    expect(fullRoom.canApply).toBe(false);
+
+    const blocked = await request(app)
+      .post(`/api/v1/rooms/${roomId}/join-requests`)
+      .set('Authorization', `Bearer ${overflowToken}`)
+      .send({
+        initialWeightKg: 72.1,
+        initialPhotoUrl: 'local://overflow-applicant',
+      });
+    expect(blocked.status).toBe(409);
   });
 });

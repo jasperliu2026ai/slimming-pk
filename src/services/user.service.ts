@@ -5,7 +5,7 @@ import { prisma } from '../config/database';
 import { logger } from '../config/logger';
 import { NotFoundError, UnauthorizedError } from '../utils/AppError';
 import { UpdateProfileDto } from '../validators/user.schema';
-import { assertOwnedObjectKey, deleteManagedObjects } from './storage.service';
+import { assertOwnedObjectKey, deleteManagedObjects, getSignedAvatarUrl } from './storage.service';
 
 function jsonStrings(value: Prisma.JsonValue): string[] {
   return Array.isArray(value)
@@ -13,9 +13,16 @@ function jsonStrings(value: Prisma.JsonValue): string[] {
     : [];
 }
 
-function toPublicUser(user: User) {
+async function toPublicUser(user: User) {
+  let avatarDisplayUrl = '';
+  try {
+    avatarDisplayUrl = await getSignedAvatarUrl(user.avatarUrl);
+  } catch (error) {
+    logger.warn({ error, userId: user.id }, 'failed to sign profile avatar');
+  }
   return {
     ...user,
+    avatarDisplayUrl,
     targetWeightKg: user.targetWeightKg === null ? null : Number(user.targetWeightKg),
     currentWeightKg: user.currentWeightKg === null ? null : Number(user.currentWeightKg),
     privacyAgreedAt: user.privacyAgreedAt?.toISOString() ?? null,
@@ -76,7 +83,7 @@ export async function loginByWechatCode(code: string, privacyAgreed: true, trace
     expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
   };
   const token = jwt.sign({ userId: user.id }, env.JWT_SECRET, options);
-  return { token, user: toPublicUser(user) };
+  return { token, user: await toPublicUser(user) };
 }
 
 export async function getProfile(userId: string) {

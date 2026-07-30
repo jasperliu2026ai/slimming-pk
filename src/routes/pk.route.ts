@@ -4,7 +4,9 @@ import { validate } from '../middlewares/validate';
 import * as controller from '../controllers/room.controller';
 import {
   createRoomSchema,
+  decideJoinRequestSchema,
   inviteCodeParamsSchema,
+  joinRequestParamsSchema,
   joinRoomSchema,
   roomIdParamsSchema,
 } from '../validators/room.schema';
@@ -24,7 +26,24 @@ pkRouter.post(
   '/:roomId/join',
   validate(roomIdParamsSchema, 'params'),
   validate(joinRoomSchema),
-  controller.joinRoom,
+  controller.createJoinRequest,
+);
+pkRouter.post(
+  '/:roomId/join-requests',
+  validate(roomIdParamsSchema, 'params'),
+  validate(joinRoomSchema),
+  controller.createJoinRequest,
+);
+pkRouter.get(
+  '/:roomId/join-requests',
+  validate(roomIdParamsSchema, 'params'),
+  controller.listJoinRequests,
+);
+pkRouter.patch(
+  '/:roomId/join-requests/:requestId',
+  validate(joinRequestParamsSchema, 'params'),
+  validate(decideJoinRequestSchema),
+  controller.decideJoinRequest,
 );
 pkRouter.get(
   '/:roomId/leaderboard',

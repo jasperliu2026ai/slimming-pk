@@ -22,6 +22,7 @@ model User {
   updatedAt       DateTime     @updatedAt
   createdRooms    PkRoom[]     @relation("RoomCreator")
   roomMemberships RoomMember[]
+  joinRequests    JoinRequest[]
   checkins        Checkin[]
 
   @@map("users")
@@ -41,6 +42,7 @@ model PkRoom {
   updatedAt    DateTime     @updatedAt
   creator      User         @relation("RoomCreator", fields: [creatorId], references: [id], onDelete: Restrict)
   members      RoomMember[]
+  joinRequests JoinRequest[]
   checkins     Checkin[]
 
   @@index([creatorId, createdAt])
@@ -62,6 +64,25 @@ model RoomMember {
   @@id([roomId, userId])
   @@index([userId, status])
   @@map("room_members")
+}
+
+model JoinRequest {
+  id               String            @id @default(cuid())
+  roomId           String
+  userId           String
+  initialWeightKg  Decimal           @db.Decimal(5, 2)
+  initialPhotoKey  String            @map("initialPhotoUrl") @db.VarChar(500)
+  status           JoinRequestStatus @default(pending)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  decidedAt        DateTime?
+  room             PkRoom            @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([roomId, status, createdAt])
+  @@index([userId, status])
+  @@map("join_requests")
 }
 
 model Checkin {
@@ -117,6 +138,12 @@ enum RoomStatus {
 enum MemberStatus {
   active
   withdrawn
+}
+
+enum JoinRequestStatus {
+  pending
+  approved
+  rejected
 }
 
 enum BizType {

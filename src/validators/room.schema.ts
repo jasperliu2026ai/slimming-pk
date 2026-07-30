@@ -6,6 +6,11 @@ export const roomIdParamsSchema = z.object({
   roomId: z.string().min(1),
 });
 
+export const joinRequestParamsSchema = z.object({
+  roomId: z.string().min(1),
+  requestId: z.string().min(1),
+});
+
 export const inviteCodeParamsSchema = z.object({
   inviteCode: z
     .string()
@@ -15,8 +20,8 @@ export const inviteCodeParamsSchema = z.object({
 
 export const createRoomSchema = z.object({
   name: z.string().trim().min(1).max(20),
-  durationDays: z.number().int().min(7).max(90),
-  maxMembers: z.number().int().min(2).max(8).default(5),
+  durationDays: z.number().int().min(1).max(365),
+  maxMembers: z.number().int().min(2).max(100).default(5),
   startDate: z.string().regex(datePattern, 'startDate must be YYYY-MM-DD'),
   initialWeightKg: z.number().min(30).max(300),
   initialPhotoUrl: z.string().min(1),
@@ -27,5 +32,10 @@ export const joinRoomSchema = z.object({
   initialPhotoUrl: z.string().min(1),
 });
 
+export const decideJoinRequestSchema = z.object({
+  action: z.enum(['approve', 'reject']),
+});
+
 export type CreateRoomDto = z.infer<typeof createRoomSchema>;
 export type JoinRoomDto = z.infer<typeof joinRoomSchema>;
+export type DecideJoinRequestDto = z.infer<typeof decideJoinRequestSchema>;

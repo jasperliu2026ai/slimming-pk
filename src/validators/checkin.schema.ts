@@ -15,13 +15,6 @@ export const checkinSchema = z
     exercisePhotoUrls: z.array(z.string().min(1)).max(9).optional(),
   })
   .superRefine((value, ctx) => {
-    if (value.weightKg !== undefined && !value.weightPhotoUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['weightPhotoUrl'],
-        message: '体重打卡必须上传现场照片',
-      });
-    }
     const hasAny =
       value.weightKg !== undefined ||
       Boolean(value.dietText) ||
