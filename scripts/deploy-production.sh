@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-APP_DIR="${APP_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || cd "$(dirname "$0")/.." && pwd)}"
+APP_DIR="${APP_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.." && pwd))}"
 BRANCH="${DEPLOY_BRANCH:-main}"
 SERVICE="${DEPLOY_SERVICE:-slimming-pk}"
 HEALTH_URL="${DEPLOY_HEALTH_URL:-http://127.0.0.1:3000/api/v1/health}"
