@@ -1,6 +1,7 @@
 {
   "name": "fitpk-server",
   "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
   "description": "减肥 PK 小程序后端服务",
   "main": "dist/index.js",
   "scripts": {
@@ -20,6 +21,7 @@
     "db:start": "bash scripts/local-mysql.sh start",
     "db:stop": "bash scripts/local-mysql.sh stop",
     "db:status": "bash scripts/local-mysql.sh status",
+    "deploy:production": "bash scripts/deploy-production.sh",
     "prepare": "husky install || true"
   },
   "engines": {

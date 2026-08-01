@@ -145,4 +145,42 @@ sudo systemctl restart slimming-pk
 curl http://127.0.0.1:3000/api/v1/health
 ```
 
+也可以使用仓库内置的一键部署脚本。脚本会阻止并发部署，依次执行拉取代码、锁定依赖安装、Prisma Client 生成、编译、数据库迁移、服务重启和健康检查：
+
+```bash
+cd /root/slimming-pk
+bash scripts/deploy-production.sh
+```
+
+首次把脚本更新到服务器时执行：
+
+```bash
+cd /root/slimming-pk
+git pull --ff-only origin main
+bash scripts/deploy-production.sh
+```
+
+## 6. GitHub Actions 自动部署
+
+仓库的 `.github/workflows/deploy.yml` 会在 `main` 更新后运行 MySQL 接口测试、编译和代码检查。部署任务默认关闭，避免尚未配置密钥时误连服务器。
+
+在 GitHub 仓库 `Settings → Secrets and variables → Actions` 中添加：
+
+- Variables：`AUTO_DEPLOY_ENABLED=true`
+- Secrets：`SERVER_HOST`、`SERVER_PORT`、`SERVER_USER`、`SERVER_SSH_KEY`、`SERVER_KNOWN_HOSTS`
+
+当前服务器可填写：
+
+- `SERVER_HOST=129.204.25.164`
+- `SERVER_PORT=22`
+- `SERVER_USER=root`
+
+`SERVER_SSH_KEY` 应使用专门为自动部署创建的私钥，不要上传个人常用私钥。对应公钥需要加入服务器 `/root/.ssh/authorized_keys`。`SERVER_KNOWN_HOSTS` 填写在可信设备上执行下面命令得到的完整输出：
+
+```bash
+ssh-keyscan -H -p 22 129.204.25.164
+```
+
+配置完成后，后端代码推送到 `main` 会自动部署；也可以在 GitHub 仓库 `Actions → Test and deploy backend → Run workflow` 手动触发。生产部署使用并发锁，同一时间只会执行一个任务。
+
 后续再通过 Nginx 和 HTTPS 域名对外暴露 API。MySQL 仍保持只允许服务器本机访问。
