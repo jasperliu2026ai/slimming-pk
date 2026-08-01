@@ -34,7 +34,7 @@ export const unlockTestAccountsSchema = z.object({
 });
 
 export const createTestAccountSchema = z.object({
-  nickname: z.string().trim().min(1, '请输入测试账号昵称').max(32),
+  nickname: publicNicknameSchema,
 });
 
 export const switchTestAccountSchema = z.object({

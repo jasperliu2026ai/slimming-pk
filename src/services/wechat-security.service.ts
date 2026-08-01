@@ -1,4 +1,5 @@
 import { env } from '../config/env';
+import { prisma } from '../config/database';
 import { logger } from '../config/logger';
 import { ServiceUnavailableError, ValidationError } from '../utils/AppError';
 
@@ -47,7 +48,7 @@ async function getAccessToken() {
   return accessToken;
 }
 
-export async function checkWechatText(content: string, openid: string) {
+export async function checkWechatText(content: string, openid: string, scene = 1) {
   if (!requireSecurityConfig()) return;
   const token = await getAccessToken();
   const response = await fetch(
@@ -55,7 +56,7 @@ export async function checkWechatText(content: string, openid: string) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, version: 2, scene: 1, openid }),
+      body: JSON.stringify({ content, version: 2, scene, openid }),
     },
   );
   const result = (await response.json()) as WechatApiResult;
@@ -66,6 +67,33 @@ export async function checkWechatText(content: string, openid: string) {
     logger.warn({ errcode: result.errcode, errmsg: result.errmsg }, 'wechat text check failed');
     throw new ServiceUnavailableError('昵称安全检测暂时不可用，请稍后再试');
   }
+}
+
+export async function checkWechatUserText(
+  userId: string,
+  contents: Array<string | undefined>,
+  scene = 1,
+) {
+  const content = contents
+    .map((item) => item?.trim())
+    .filter(Boolean)
+    .join('\n');
+  if (!content) return;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { openid: true, testOwnerId: true },
+  });
+  if (!user) throw new ValidationError('用户不存在');
+  const moderationOpenid = user.testOwnerId
+    ? (
+        await prisma.user.findUnique({
+          where: { id: user.testOwnerId },
+          select: { openid: true },
+        })
+      )?.openid
+    : user.openid;
+  if (!moderationOpenid) throw new ValidationError('用户身份信息不存在');
+  await checkWechatText(content, moderationOpenid, scene);
 }
 
 export async function checkWechatImage(body: Buffer, contentType: string) {

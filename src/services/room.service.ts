@@ -12,6 +12,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from '../utils/AppError'
 import { dateOnly, shanghaiDateString } from '../utils/date';
 import { CreateRoomDto, JoinRoomDto } from '../validators/room.schema';
 import { assertOwnedObjectKey, getSignedAvatarUrl } from './storage.service';
+import { checkWechatUserText } from './wechat-security.service';
 
 type DbClient = Prisma.TransactionClient | PrismaClient;
 
@@ -213,6 +214,7 @@ async function createInviteCode() {
 
 export async function createRoom(userId: string, dto: CreateRoomDto) {
   assertOwnedObjectKey(dto.initialPhotoUrl, userId);
+  await checkWechatUserText(userId, [dto.name], 2);
   const inviteCode = await createInviteCode();
   return prisma.$transaction(
     async (tx) => {
@@ -479,6 +481,7 @@ export async function restoreRoom(roomId: string, userId: string) {
 
 export async function restartRoom(sourceRoomId: string, userId: string, dto: CreateRoomDto) {
   assertOwnedObjectKey(dto.initialPhotoUrl, userId);
+  await checkWechatUserText(userId, [dto.name], 2);
   const inviteCode = await createInviteCode();
   return prisma.$transaction(
     async (tx) => {

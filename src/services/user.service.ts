@@ -7,7 +7,7 @@ import { logger } from '../config/logger';
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../utils/AppError';
 import { CreateTestAccountDto, UpdateProfileDto } from '../validators/user.schema';
 import { assertOwnedObjectKey, deleteManagedObjects, getSignedAvatarUrl } from './storage.service';
-import { checkWechatText } from './wechat-security.service';
+import { checkWechatUserText } from './wechat-security.service';
 
 const PROFILE_UPDATE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -177,6 +177,7 @@ export async function createTestAccount(
   dto: CreateTestAccountDto,
 ) {
   const rootUserId = await verifyTestAdminToken(adminToken, currentUserId);
+  await checkWechatUserText(rootUserId, [dto.nickname]);
   const accountCount = await prisma.user.count({ where: { testOwnerId: rootUserId } });
   if (accountCount >= 20) throw new ConflictError('测试账号最多创建 20 个');
   const account = await prisma.user.create({
@@ -239,7 +240,6 @@ export async function updateProfile(userId: string, dto: UpdateProfileDto) {
     where: { id: userId },
     select: {
       id: true,
-      openid: true,
       nickname: true,
       avatarUrl: true,
       profileUpdatedAt: true,
@@ -259,7 +259,7 @@ export async function updateProfile(userId: string, dto: UpdateProfileDto) {
       );
     }
   }
-  if (nicknameChanged) await checkWechatText(dto.nickname!, existing.openid);
+  if (nicknameChanged) await checkWechatUserText(userId, [dto.nickname]);
   const user = await prisma.user.update({
     where: { id: userId },
     data: {

@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError } from '../utils/AppError';
 import { dateOnly, shanghaiDateString } from '../utils/date';
 import { CheckinDto } from '../validators/checkin.schema';
 import { assertOwnedObjectKey } from './storage.service';
+import { checkWechatUserText } from './wechat-security.service';
 
 function todayDate() {
   return dateOnly(shanghaiDateString());
@@ -31,6 +32,7 @@ function toPublicCheckin(checkin: Checkin) {
 }
 
 export async function saveTodayCheckin(roomId: string, userId: string, dto: CheckinDto) {
+  await checkWechatUserText(userId, [dto.dietText, dto.exerciseText], 2);
   return prisma.$transaction(async (tx) => {
     const member = await tx.roomMember.findUnique({
       where: { roomId_userId: { roomId, userId } },
