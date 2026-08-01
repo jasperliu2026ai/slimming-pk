@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { weightKgSchema } from './weight.schema';
 
 const optionalText = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
@@ -7,7 +8,7 @@ const optionalText = z.preprocess(
 
 export const checkinSchema = z
   .object({
-    weightKg: z.number().min(30).max(300).optional(),
+    weightKg: weightKgSchema(30).optional(),
     weightPhotoUrl: z.string().min(1).optional(),
     dietText: optionalText,
     dietPhotoUrls: z.array(z.string().min(1)).max(9).optional(),

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { weightKgSchema } from './weight.schema';
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -23,12 +24,12 @@ export const createRoomSchema = z.object({
   durationDays: z.number().int().min(1).max(365),
   maxMembers: z.number().int().min(2).max(100).default(5),
   startDate: z.string().regex(datePattern, 'startDate must be YYYY-MM-DD'),
-  initialWeightKg: z.number().min(30).max(300),
+  initialWeightKg: weightKgSchema(30),
   initialPhotoUrl: z.string().max(500).optional().default(''),
 });
 
 export const joinRoomSchema = z.object({
-  initialWeightKg: z.number().min(30).max(300),
+  initialWeightKg: weightKgSchema(30),
   initialPhotoUrl: z.string().max(500).optional().default(''),
 });
 

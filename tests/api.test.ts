@@ -289,6 +289,15 @@ describe('MVP API flow', () => {
         nickname: '同减重',
       },
     });
+    await prisma.user.upsert({
+      where: { id: 'ranking-weight-gain' },
+      update: {},
+      create: {
+        id: 'ranking-weight-gain',
+        openid: 'ranking-weight-gain-openid',
+        nickname: '体重增加成员',
+      },
+    });
     await prisma.roomMember.createMany({
       data: [
         {
@@ -304,6 +313,13 @@ describe('MVP API flow', () => {
           initialWeightKg: 70,
           currentWeightKg: 69.6,
           initialPhotoKey: 'local://ranking-tied-loss',
+        },
+        {
+          roomId,
+          userId: 'ranking-weight-gain',
+          initialWeightKg: 75,
+          currentWeightKg: 76,
+          initialPhotoKey: 'local://ranking-weight-gain',
         },
       ],
     });
@@ -334,6 +350,19 @@ describe('MVP API flow', () => {
     expect(third.weightLossKg).toBe(0.3);
     expect(third.checkinDays).toBe(7);
     expect(third.rank).toBe(3);
+    const unchangedMember = leaderboard.body.data.list.find(
+      (item: { weightLossKg: number }) => item.weightLossKg === 0,
+    );
+    const gainingMember = leaderboard.body.data.list.find(
+      (item: { nickname: string }) => item.nickname === '体重增加成员',
+    );
+    expect(gainingMember.weightLossKg).toBe(-1);
+    expect(gainingMember.weightLossPercent).toBe(-1.33);
+    expect(gainingMember.score).toBe(-100);
+    expect(gainingMember.rank).toBeGreaterThan(unchangedMember.rank);
+    await prisma.roomMember.delete({
+      where: { roomId_userId: { roomId, userId: 'ranking-weight-gain' } },
+    });
 
     const room = await request(app)
       .get(`/api/v1/rooms/${roomId}`)

@@ -59,14 +59,9 @@ async function loadRanking(client: DbClient, room: RoomWithMembers, includeAvata
     room.members.map(async (member) => {
       const initialWeightKg = Number(member.initialWeightKg);
       const checkinDays = countByUser.get(member.userId) ?? 0;
-      const weightLossKg = Math.max(
-        0,
-        Number(member.initialWeightKg.minus(member.currentWeightKg).toFixed(2)),
-      );
-      const weightLossPercent = Math.max(
-        0,
-        Number(((weightLossKg / initialWeightKg) * 100).toFixed(2)),
-      );
+      // 实际减重必须保留正负号：增重成员应排在体重未变化的成员之后。
+      const weightLossKg = Number(member.initialWeightKg.minus(member.currentWeightKg).toFixed(2));
+      const weightLossPercent = Number(((weightLossKg / initialWeightKg) * 100).toFixed(2));
       let avatarUrl = '';
       if (includeAvatars) {
         try {
