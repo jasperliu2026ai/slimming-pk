@@ -1,5 +1,5 @@
 process.env.JWT_SECRET = 'test-secret-please-change';
-process.env.DATABASE_URL =
+process.env.DATABASE_URL ||=
   'mysql://slimming_pk:slimming_pk_dev_2026@127.0.0.1:3306/slimming_pk_test';
 process.env.WECHAT_APPID = '';
 process.env.WECHAT_APPSECRET = '';
