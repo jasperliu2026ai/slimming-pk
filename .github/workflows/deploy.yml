@@ -51,7 +51,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          pnpm test --runInBand 2>&1 | tee test-output.log
+          pnpm exec jest --runInBand 2>&1 | tee test-output.log
           test_status=${PIPESTATUS[0]}
           set -e
 
