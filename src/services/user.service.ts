@@ -261,17 +261,38 @@ export async function deleteProfile(userId: string) {
   });
   if (!existing) throw new NotFoundError('User not found');
   const accountIds = [existing.id, ...existing.testAccounts.map((account) => account.id)];
-  const [memberships, checkins] = await Promise.all([
-    prisma.roomMember.findMany({
-      where: {
-        OR: [{ userId: { in: accountIds } }, { room: { creatorId: { in: accountIds } } }],
+  const ownedRooms = await prisma.pkRoom.findMany({
+    where: { creatorId: { in: accountIds } },
+    select: {
+      id: true,
+      members: {
+        where: { userId: { notIn: accountIds } },
+        orderBy: { joinedAt: 'asc' },
+        take: 1,
+        select: { userId: true },
       },
+    },
+  });
+  const roomTransfers = ownedRooms.flatMap((room) =>
+    room.members[0] ? [{ roomId: room.id, creatorId: room.members[0].userId }] : [],
+  );
+  const roomIdsToDelete = ownedRooms
+    .filter((room) => room.members.length === 0)
+    .map((room) => room.id);
+  const mediaOwnerWhere = roomIdsToDelete.length
+    ? { OR: [{ userId: { in: accountIds } }, { roomId: { in: roomIdsToDelete } }] }
+    : { userId: { in: accountIds } };
+  const [memberships, joinRequests, checkins] = await Promise.all([
+    prisma.roomMember.findMany({
+      where: mediaOwnerWhere,
+      select: { initialPhotoKey: true },
+    }),
+    prisma.joinRequest.findMany({
+      where: mediaOwnerWhere,
       select: { initialPhotoKey: true },
     }),
     prisma.checkin.findMany({
-      where: {
-        OR: [{ userId: { in: accountIds } }, { room: { creatorId: { in: accountIds } } }],
-      },
+      where: mediaOwnerWhere,
       select: {
         weightPhotoKey: true,
         dietPhotoUrls: true,
@@ -283,6 +304,7 @@ export async function deleteProfile(userId: string) {
     existing.avatarUrl,
     ...existing.testAccounts.map((account) => account.avatarUrl),
     ...memberships.map((item) => item.initialPhotoKey),
+    ...joinRequests.map((item) => item.initialPhotoKey),
     ...checkins.flatMap((item) => [
       item.weightPhotoKey ?? '',
       ...jsonStrings(item.dietPhotoUrls),
@@ -290,8 +312,20 @@ export async function deleteProfile(userId: string) {
     ]),
   ]);
   await prisma.$transaction(async (tx) => {
-    await tx.pkRoom.deleteMany({ where: { creatorId: { in: accountIds } } });
+    for (const transfer of roomTransfers) {
+      await tx.pkRoom.update({
+        where: { id: transfer.roomId },
+        data: { creatorId: transfer.creatorId },
+      });
+    }
+    if (roomIdsToDelete.length) {
+      await tx.pkRoom.deleteMany({ where: { id: { in: roomIdsToDelete } } });
+    }
     await tx.user.delete({ where: { id: userId } });
   });
-  return { deleted: true };
+  return {
+    deleted: true,
+    transferredRoomCount: roomTransfers.length,
+    deletedEmptyRoomCount: roomIdsToDelete.length,
+  };
 }

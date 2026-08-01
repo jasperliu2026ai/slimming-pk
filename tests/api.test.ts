@@ -467,4 +467,95 @@ describe('MVP API flow', () => {
     expect(restartedRoom.body.data.isMember).toBe(true);
     expect(restartedRoom.body.data.memberCount).toBe(2);
   });
+
+  it('transfers owned rooms on account deletion without deleting other members data', async () => {
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const ownerId = `delete-owner-${suffix}`;
+    const survivorId = `delete-survivor-${suffix}`;
+    await prisma.user.createMany({
+      data: [
+        { id: ownerId, openid: `${ownerId}-openid`, nickname: '待注销创建者' },
+        { id: survivorId, openid: `${survivorId}-openid`, nickname: '保留成员' },
+      ],
+    });
+    const startDate = new Date(`${shanghaiDateString()}T00:00:00.000Z`);
+    const transferredRoom = await prisma.pkRoom.create({
+      data: {
+        inviteCode: `D${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+        name: '注销转让测试',
+        status: 'active',
+        startDate,
+        endDate: startDate,
+        durationDays: 1,
+        creatorId: ownerId,
+        members: {
+          create: [
+            { userId: ownerId, initialWeightKg: 70, currentWeightKg: 70, initialPhotoKey: '' },
+            { userId: survivorId, initialWeightKg: 65, currentWeightKg: 64, initialPhotoKey: '' },
+          ],
+        },
+        checkins: {
+          create: [
+            {
+              userId: ownerId,
+              checkinDate: startDate,
+              weightKg: 69,
+              dietPhotoUrls: [],
+              exercisePhotoUrls: [],
+            },
+            {
+              userId: survivorId,
+              checkinDate: startDate,
+              weightKg: 64,
+              dietPhotoUrls: [],
+              exercisePhotoUrls: [],
+            },
+          ],
+        },
+      },
+    });
+    const emptyRoom = await prisma.pkRoom.create({
+      data: {
+        inviteCode: `E${Math.random().toString(36).slice(2, 10).toUpperCase()}`,
+        name: '注销空房测试',
+        status: 'active',
+        startDate,
+        endDate: startDate,
+        durationDays: 1,
+        creatorId: ownerId,
+        members: {
+          create: {
+            userId: ownerId,
+            initialWeightKg: 70,
+            currentWeightKg: 70,
+            initialPhotoKey: '',
+          },
+        },
+      },
+    });
+    const ownerToken = jwt.sign({ userId: ownerId }, process.env.JWT_SECRET!);
+
+    const deleted = await request(app)
+      .delete('/api/v1/users/me')
+      .set('Authorization', `Bearer ${ownerToken}`);
+
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.data).toMatchObject({
+      deleted: true,
+      transferredRoomCount: 1,
+      deletedEmptyRoomCount: 1,
+    });
+    expect(await prisma.user.findUnique({ where: { id: ownerId } })).toBeNull();
+    expect(await prisma.pkRoom.findUnique({ where: { id: emptyRoom.id } })).toBeNull();
+    const preservedRoom = await prisma.pkRoom.findUnique({
+      where: { id: transferredRoom.id },
+      include: { members: true, checkins: true },
+    });
+    expect(preservedRoom?.creatorId).toBe(survivorId);
+    expect(preservedRoom?.members.map((member) => member.userId)).toEqual([survivorId]);
+    expect(preservedRoom?.checkins.map((checkin) => checkin.userId)).toEqual([survivorId]);
+
+    await prisma.pkRoom.delete({ where: { id: transferredRoom.id } });
+    await prisma.user.delete({ where: { id: survivorId } });
+  });
 });
