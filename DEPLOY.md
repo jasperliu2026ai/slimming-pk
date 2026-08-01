@@ -31,13 +31,12 @@ MySQL 只需监听服务器本机 `127.0.0.1:3306`，不要向公网开放 3306 
 
 ## 2. 拉取后端代码
 
-服务器需要 Git、Node.js 20 和 pnpm。确认版本：
+服务器需要 Git、Node.js 20 和 npm。确认版本：
 
 ```bash
 git --version
 node --version
-corepack enable
-pnpm --version
+npm --version
 ```
 
 首次部署：
@@ -47,14 +46,14 @@ sudo useradd --system --create-home --home-dir /var/lib/slimpk --shell /usr/sbin
 sudo mkdir -p /opt/slimming-pk
 sudo chown slimpk:slimpk /opt/slimming-pk
 sudo -u slimpk git clone https://github.com/jasperliu2026ai/slimming-pk.git /opt/slimming-pk
-sudo -u slimpk pnpm --dir /opt/slimming-pk install --frozen-lockfile
+sudo -u slimpk npm --prefix /opt/slimming-pk ci
 ```
 
 以后更新：
 
 ```bash
 sudo -u slimpk git -C /opt/slimming-pk pull --ff-only origin main
-sudo -u slimpk pnpm --dir /opt/slimming-pk install --frozen-lockfile
+sudo -u slimpk npm --prefix /opt/slimming-pk ci
 ```
 
 ## 3. 配置生产环境
@@ -95,17 +94,17 @@ openssl rand -hex 32
 ## 4. 建表和构建
 
 ```bash
-sudo -u slimpk pnpm --dir /opt/slimming-pk prisma:generate
-sudo -u slimpk pnpm --dir /opt/slimming-pk prisma:deploy
-sudo -u slimpk pnpm --dir /opt/slimming-pk build
+sudo -u slimpk npm --prefix /opt/slimming-pk run prisma:generate
+sudo -u slimpk npm --prefix /opt/slimming-pk run prisma:deploy
+sudo -u slimpk npm --prefix /opt/slimming-pk run build
 ```
 
-生产环境不要执行 `pnpm prisma:seed`，它只用于本地演示数据。
+生产环境不要执行 `npm run prisma:seed`，它只用于本地演示数据。
 
 先前台验证：
 
 ```bash
-sudo -u slimpk pnpm --dir /opt/slimming-pk start
+sudo -u slimpk npm --prefix /opt/slimming-pk start
 ```
 
 另开一个终端检查：
@@ -137,10 +136,10 @@ sudo journalctl -u slimming-pk -f
 
 ```bash
 sudo -u slimpk git -C /opt/slimming-pk pull --ff-only origin main
-sudo -u slimpk pnpm --dir /opt/slimming-pk install --frozen-lockfile
-sudo -u slimpk pnpm --dir /opt/slimming-pk prisma:generate
-sudo -u slimpk pnpm --dir /opt/slimming-pk prisma:deploy
-sudo -u slimpk pnpm --dir /opt/slimming-pk build
+sudo -u slimpk npm --prefix /opt/slimming-pk ci
+sudo -u slimpk npm --prefix /opt/slimming-pk run prisma:generate
+sudo -u slimpk npm --prefix /opt/slimming-pk run prisma:deploy
+sudo -u slimpk npm --prefix /opt/slimming-pk run build
 sudo systemctl restart slimming-pk
 curl http://127.0.0.1:3000/api/v1/health
 ```

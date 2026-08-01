@@ -1,9 +1,8 @@
 # --- build stage ---
 FROM node:20-alpine AS builder
 WORKDIR /app
-RUN corepack enable
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile || npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 RUN npx prisma generate || true
 RUN npm run build

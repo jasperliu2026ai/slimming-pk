@@ -41,17 +41,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: corepack enable
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm prisma:generate
-      - run: pnpm prisma:deploy
-      - run: pnpm build
-      - run: pnpm lint
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npm run prisma:deploy
+      - run: npm run build
+      - run: npm run lint
       - name: Run backend tests
         shell: bash
         run: |
           set +e
-          pnpm exec jest --runInBand 2>&1 | tee test-output.log
+          npm test -- --runInBand 2>&1 | tee test-output.log
           test_status=${PIPESTATUS[0]}
           set -e
 

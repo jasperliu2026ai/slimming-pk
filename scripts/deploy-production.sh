@@ -18,6 +18,7 @@ fail() {
 
 command -v git >/dev/null || fail 'git 未安装'
 command -v curl >/dev/null || fail 'curl 未安装'
+command -v npm >/dev/null || fail 'npm 未安装'
 command -v systemctl >/dev/null || fail 'systemctl 不可用'
 command -v flock >/dev/null || fail 'flock 不可用'
 if [ "$(id -u)" -ne 0 ]; then
@@ -36,17 +37,8 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   fail '服务器存在未提交的代码修改，为避免覆盖已停止部署'
 fi
 
-if command -v pnpm >/dev/null 2>&1; then
-  PKG=(pnpm)
-elif command -v corepack >/dev/null 2>&1; then
-  corepack pnpm --version >/dev/null
-  PKG=(corepack pnpm)
-else
-  fail 'pnpm 未安装，请先执行：corepack enable'
-fi
-
 run_script() {
-  "${PKG[@]}" run "$1"
+  npm run "$1"
 }
 
 restart_service() {
@@ -78,7 +70,7 @@ git fetch origin "$BRANCH"
 git merge --ff-only "origin/$BRANCH"
 
 log '安装锁定版本依赖'
-CI=1 "${PKG[@]}" install --frozen-lockfile
+CI=1 npm ci
 
 log '生成 Prisma Client'
 run_script prisma:generate

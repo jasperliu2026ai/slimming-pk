@@ -5,16 +5,16 @@
 ## 0. 前置
 
 - Node.js ≥ 18（推荐 20 LTS）
-- pnpm ≥ 8（`corepack enable && corepack prepare pnpm@latest --activate`）
+- npm ≥ 9（随 Node.js 一起安装）
 - 本地 MySQL 8.x（当前 Mac 已在工作区安装官方 MySQL 8.4 LTS）
 - 本地 Redis 6.x（可选，后续接入时才需要）
 
 当前电脑启动、查看和停止本地 MySQL：
 
 ```bash
-pnpm db:start
-pnpm db:status
-pnpm db:stop
+npm run db:start
+npm run db:status
+npm run db:stop
 ```
 
 MySQL 程序目录：`../.local/mysql-8.4.10-macos15-arm64`；数据目录：`../.data/mysql`。
@@ -23,7 +23,7 @@ MySQL 程序目录：`../.local/mysql-8.4.10-macos15-arm64`；数据目录：`..
 ## 1. 安装依赖
 
 ```bash
-pnpm install
+npm ci
 ```
 
 ## 2. 配置环境变量
@@ -42,11 +42,11 @@ cp env.example.txt .env
 
 ```bash
 # 生成 Prisma Client（第一次和每次改 schema 后都要跑）
-pnpm prisma:generate
+npm run prisma:generate
 
 # 应用仓库中已有的 migration，并写入本地演示初始数据
-pnpm prisma:deploy
-pnpm prisma:seed
+npm run prisma:deploy
+npm run prisma:seed
 ```
 
 如果 `migrate dev` 报连不上库，先确认：
@@ -57,7 +57,7 @@ pnpm prisma:seed
 ## 4. 启动 dev server
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 看到日志 `server listening on :3000` 就是好了。
@@ -74,16 +74,16 @@ curl http://localhost:3000/api/v1/health
 ## 5. 单测
 
 ```bash
-pnpm test          # 跑一次
-pnpm test:watch    # watch 模式
-pnpm test:cov      # 带覆盖率
+npm test           # 跑一次
+npm run test:watch # watch 模式
+npm run test:cov   # 带覆盖率
 ```
 
 ## 6. 构建 & 生产
 
 ```bash
-pnpm build        # 编译到 dist/
-pnpm start        # node dist/index.js
+npm run build     # 编译到 dist/
+npm start         # node dist/index.js
 ```
 
 或者直接 Docker：

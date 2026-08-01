@@ -15,7 +15,7 @@
 | 鉴权 | JWT |
 | 文档 | swagger-jsdoc + swagger-ui-express（`/docs`） |
 | 测试 | Jest + supertest |
-| 包管理 | pnpm |
+| 包管理 | npm |
 | 部署 | PM2 / Docker / K8s |
 
 ## 目录结构
@@ -39,18 +39,18 @@ tests/            单测 & 接口测试
 
 ```bash
 # 1. 装依赖
-pnpm install
+npm ci
 
 # 2. 复制环境变量
 cp env.example.txt .env
 # 编辑 .env 里的 DATABASE_URL / JWT_SECRET 等
 
 # 3. 生成 Prisma Client & 建表
-pnpm prisma:generate
-pnpm prisma:migrate
+npm run prisma:generate
+npm run prisma:migrate
 
 # 4. 启动开发
-pnpm dev
+npm run dev
 ```
 
 启动后：
