@@ -20,6 +20,7 @@ model User {
   preferredWeightUnit        WeightUnit          @default(kg)
   testOwnerId                String?             @map("test_owner_id")
   privacyAgreedAt            DateTime?
+  profileUpdatedAt           DateTime?           @map("profile_updated_at")
   createdAt                  DateTime            @default(now())
   updatedAt                  DateTime            @updatedAt
   createdRooms               PkRoom[]            @relation("RoomCreator")

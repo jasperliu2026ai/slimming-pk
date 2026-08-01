@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import COS from 'cos-nodejs-sdk-v5';
 import { env } from '../config/env';
 import { ForbiddenError, ServiceUnavailableError, ValidationError } from '../utils/AppError';
+import { checkWechatImage } from './wechat-security.service';
 
 export type UploadCategory = 'avatar' | 'checkin';
 
@@ -51,6 +52,7 @@ export async function uploadPrivateImage(input: {
 }) {
   const extension = contentTypeExtensions[input.contentType];
   if (!extension) throw new ValidationError('仅支持 JPG、PNG 或 WebP 图片');
+  await checkWechatImage(input.body, input.contentType);
   const month = new Date().toISOString().slice(0, 7);
   const objectKey = `${folderFor(input.category)}/${input.userId}/${month}/${randomUUID()}.${extension}`;
   await getCosClient().putObject({

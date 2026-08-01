@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response, Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { z } from 'zod';
 import { env } from '../config/env';
@@ -33,10 +34,18 @@ function receiveImage(req: Request, res: Response, next: NextFunction) {
 }
 
 const categorySchema = z.enum(['avatar', 'checkin']);
+const imageUploadLimiter = rateLimit({
+  windowMs: 10 * 60_000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { code: 2002, message: '图片上传过于频繁，请稍后再试', data: null },
+});
 
 uploadRouter.use(authRequired);
 uploadRouter.post(
   '/images',
+  imageUploadLimiter,
   receiveImage,
   asyncHandler(async (req, res) => {
     if (!req.file) throw new ValidationError('请选择要上传的图片');

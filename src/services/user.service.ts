@@ -7,6 +7,15 @@ import { logger } from '../config/logger';
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../utils/AppError';
 import { CreateTestAccountDto, UpdateProfileDto } from '../validators/user.schema';
 import { assertOwnedObjectKey, deleteManagedObjects, getSignedAvatarUrl } from './storage.service';
+import { checkWechatText } from './wechat-security.service';
+
+const PROFILE_UPDATE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function profileEditableAt(profileUpdatedAt: Date | null) {
+  return profileUpdatedAt
+    ? new Date(profileUpdatedAt.getTime() + PROFILE_UPDATE_INTERVAL_MS)
+    : new Date(0);
+}
 
 function jsonStrings(value: Prisma.JsonValue): string[] {
   return Array.isArray(value)
@@ -28,6 +37,8 @@ async function toPublicUser(user: User) {
     targetWeightKg: user.targetWeightKg === null ? null : Number(user.targetWeightKg),
     currentWeightKg: user.currentWeightKg === null ? null : Number(user.currentWeightKg),
     privacyAgreedAt: user.privacyAgreedAt?.toISOString() ?? null,
+    profileUpdatedAt: user.profileUpdatedAt?.toISOString() ?? null,
+    profileEditableAt: profileEditableAt(user.profileUpdatedAt).toISOString(),
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
   };
@@ -226,15 +237,35 @@ export async function getProfile(userId: string) {
 export async function updateProfile(userId: string, dto: UpdateProfileDto) {
   const existing = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, avatarUrl: true },
+    select: {
+      id: true,
+      openid: true,
+      nickname: true,
+      avatarUrl: true,
+      profileUpdatedAt: true,
+      testOwnerId: true,
+    },
   });
   if (!existing) throw new NotFoundError('User not found');
   if (dto.avatarUrl !== undefined) assertOwnedObjectKey(dto.avatarUrl, userId);
+  const nicknameChanged = dto.nickname !== undefined && dto.nickname !== existing.nickname;
+  const avatarChanged = dto.avatarUrl !== undefined && dto.avatarUrl !== existing.avatarUrl;
+  const publicProfileChanged = nicknameChanged || avatarChanged;
+  if (publicProfileChanged && !existing.testOwnerId) {
+    const editableAt = profileEditableAt(existing.profileUpdatedAt);
+    if (editableAt.getTime() > Date.now()) {
+      throw new ConflictError(
+        `微信头像和昵称每 7 天只能更新一次，下次可在 ${editableAt.toISOString().slice(0, 10)} 更新`,
+      );
+    }
+  }
+  if (nicknameChanged) await checkWechatText(dto.nickname!, existing.openid);
   const user = await prisma.user.update({
     where: { id: userId },
     data: {
       nickname: dto.nickname,
       avatarUrl: dto.avatarUrl,
+      profileUpdatedAt: publicProfileChanged ? new Date() : undefined,
       gender: dto.gender,
       heightCm: dto.heightCm,
       preferredWeightUnit: dto.preferredWeightUnit,

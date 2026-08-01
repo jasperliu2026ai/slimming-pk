@@ -33,16 +33,36 @@ describe('MVP API flow', () => {
   });
 
   it('updates nickname and owned avatar through the mini-program PUT fallback', async () => {
-    const avatarUrl = `Avatar/${userId}/2026-07/avatar.jpg`;
+    const letters = 'abcdefghij';
+    const suffix = String(Date.now())
+      .slice(-6)
+      .split('')
+      .map((digit) => letters[Number(digit)])
+      .join('');
+    const nickname = `新昵称${suffix}`;
+    const avatarUrl = `Avatar/${userId}/2026-07/avatar-${suffix}.jpg`;
+    await prisma.user.update({ where: { id: userId }, data: { profileUpdatedAt: null } });
     const response = await request(app)
       .put('/api/v1/users/me')
       .set('Authorization', `Bearer ${token}`)
-      .send({ nickname: '新昵称', avatarUrl, preferredWeightUnit: 'jin' });
+      .send({ nickname, avatarUrl, preferredWeightUnit: 'jin' });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.nickname).toBe('新昵称');
+    expect(response.body.data.nickname).toBe(nickname);
     expect(response.body.data.avatarUrl).toBe(avatarUrl);
     expect(response.body.data.preferredWeightUnit).toBe('jin');
+
+    const blocked = await request(app)
+      .put('/api/v1/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ nickname: '再次修改' });
+    expect(blocked.status).toBe(409);
+
+    const preferenceOnly = await request(app)
+      .put('/api/v1/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ preferredWeightUnit: 'kg' });
+    expect(preferenceOnly.status).toBe(200);
   });
 
   it('creates, switches and permanently deletes a password-protected test account', async () => {
